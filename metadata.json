@@ -1,0 +1,6 @@
+{
+  "name": "Workout Management System",
+  "description": "Google Sheets 기반의 개인 운동 관리 및 분석 시스템",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

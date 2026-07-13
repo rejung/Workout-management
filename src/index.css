@@ -1,0 +1,64 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Custom premium range slider */
+input[type="range"].premium-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  border-radius: 9999px;
+  outline: none;
+  transition: background 0.15s ease-in-out;
+}
+
+input[type="range"].premium-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #09090b; /* zinc-950 */
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 3px 6px -1px rgba(0, 0, 0, 0.15), 0 2px 4px -1px rgba(0, 0, 0, 0.1);
+  cursor: ew-resize;
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s ease;
+}
+
+input[type="range"].premium-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  background: #18181b; /* zinc-900 */
+}
+
+input[type="range"].premium-slider::-webkit-slider-thumb:active {
+  transform: scale(1.25);
+  background: #000000;
+}
+
+input[type="range"].premium-slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #09090b;
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 3px 6px -1px rgba(0, 0, 0, 0.15), 0 2px 4px -1px rgba(0, 0, 0, 0.1);
+  cursor: ew-resize;
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s ease;
+}
+
+input[type="range"].premium-slider::-moz-range-thumb:hover {
+  transform: scale(1.15);
+  background: #18181b;
+}
+
+input[type="range"].premium-slider::-moz-range-thumb:active {
+  transform: scale(1.25);
+  background: #000000;
+}
+
+
