@@ -7,10 +7,23 @@ import { WorkoutLog, Routine, Exercise } from '../types';
 import { storage } from './storage';
 import { DEFAULT_EXERCISES, DEFAULT_ROUTINES } from '../constants';
 import { isMockWorkoutLogId } from '../constants/mockData';
+import { applyV1CustomExerciseRemappingPatch } from '../utils/v1Migration';
 
 const LOGS_KEY = 'wms_logs';
 const ROUTINES_KEY = 'wms_routines';
 const EXERCISES_KEY = 'wms_exercises';
+
+export function isRemovedExerciseName(name: string): boolean {
+  if (!name) return false;
+  const n = name.toLowerCase().replace(/\s+/g, '');
+  return (
+    n.includes('행군') ||
+    n.includes('강습') ||
+    n.includes('탁구') ||
+    n.includes('tabletennis') ||
+    n.includes('pingpong')
+  );
+}
 
 function guessLogType(name: string, category: string): 'STANDARD' | 'BODYWEIGHT_REPS' | 'TIME_BASED' | 'CARDIO' {
   const lowercaseName = name.toLowerCase();
@@ -115,15 +128,30 @@ export const workoutRepository = {
     let exercisesChanged = false;
 
     if (!exercises || !Array.isArray(exercises)) {
-      exercises = DEFAULT_EXERCISES;
+      exercises = DEFAULT_EXERCISES.filter(ex => !isRemovedExerciseName(ex.name) && !isRemovedExerciseName(ex.id));
       exercisesChanged = true;
     }
 
-    // Map existing exercises to make sure they have a correct logType and canonicalName
+    // Filter out removed exercises if present in stored array
+    const beforeLen = exercises.length;
+    exercises = exercises.filter(ex => !isRemovedExerciseName(ex.name) && !isRemovedExerciseName(ex.id));
+    if (exercises.length !== beforeLen) {
+      exercisesChanged = true;
+    }
+
+    // Map existing exercises to make sure they have a correct logType, category, and canonicalName
     exercises = exercises.map(ex => {
       const def = DEFAULT_EXERCISES.find(d => d.id === ex.id || d.name === ex.name);
       const guessed = def?.logType || guessLogType(ex.name, ex.category);
       
+      let category = ex.category;
+      const lowerName = ex.name.toLowerCase();
+      if (lowerName.includes('풀다운') || lowerName.includes('pulldown') || lowerName.includes('랫풀') || lowerName.includes('렛풀') || lowerName.includes('lat pull')) {
+        category = 'Back';
+      } else if (def && def.category && ex.category !== def.category) {
+        category = def.category;
+      }
+
       let logType = ex.logType;
       if (!logType) {
         logType = guessed;
@@ -138,11 +166,12 @@ export const workoutRepository = {
 
       const updatedEx = {
         ...ex,
+        category,
         logType,
         canonicalName
       };
 
-      if (updatedEx.logType !== ex.logType || updatedEx.canonicalName !== ex.canonicalName) {
+      if (updatedEx.category !== ex.category || updatedEx.logType !== ex.logType || updatedEx.canonicalName !== ex.canonicalName) {
         exercisesChanged = true;
       }
 
@@ -151,14 +180,39 @@ export const workoutRepository = {
 
     // Ensure all required default exercises exist
     DEFAULT_EXERCISES.forEach(req => {
-      if (!exercises!.some(ex => ex.id === req.id || ex.name === req.name)) {
-        exercises!.push(req);
-        exercisesChanged = true;
+      if (!isRemovedExerciseName(req.name) && !isRemovedExerciseName(req.id)) {
+        if (!exercises!.some(ex => ex.id === req.id || ex.name === req.name)) {
+          exercises!.push(req);
+          exercisesChanged = true;
+        }
       }
     });
 
     if (exercisesChanged) {
       storage.setItem(EXERCISES_KEY, exercises);
+    }
+
+    // 5. One-time Legacy Custom Exercise Remapping Patch
+    const v1RemappingPatchKey = 'wms_v1_custom_remapping_patch_applied_v1';
+    if (localStorage.getItem(v1RemappingPatchKey) !== 'true') {
+      const currentLogs = this.getLogs();
+      const currentRoutines = this.getRoutines();
+      const currentExercises = storage.getItem<Exercise[]>(EXERCISES_KEY) || [];
+
+      const patchResult = applyV1CustomExerciseRemappingPatch(
+        currentLogs,
+        currentRoutines,
+        currentExercises,
+        DEFAULT_EXERCISES
+      );
+
+      if (patchResult.patchedCount > 0) {
+        this.saveLogs(patchResult.updatedLogs);
+        this.saveRoutines(patchResult.updatedRoutines);
+        this.saveExercises(patchResult.updatedExercises);
+      }
+
+      localStorage.setItem(v1RemappingPatchKey, 'true');
     }
   },
 
@@ -239,6 +293,16 @@ export const workoutRepository = {
   },
 
   /**
+   * Updates an existing routine template.
+   */
+  updateRoutine(routine: Routine): Routine[] {
+    const routines = this.getRoutines();
+    const updated = routines.map(r => r.id === routine.id ? routine : r);
+    this.saveRoutines(updated);
+    return updated;
+  },
+
+  /**
    * Deletes a routine template.
    */
   deleteRoutine(id: string): Routine[] {
@@ -255,22 +319,26 @@ export const workoutRepository = {
   getExercises(): Exercise[] {
     const exercises = storage.getItem<Exercise[]>(EXERCISES_KEY);
     if (exercises && Array.isArray(exercises)) {
-      return exercises;
+      return exercises.filter(ex => !isRemovedExerciseName(ex.name) && !isRemovedExerciseName(ex.id));
     }
-    return DEFAULT_EXERCISES;
+    return DEFAULT_EXERCISES.filter(ex => !isRemovedExerciseName(ex.name) && !isRemovedExerciseName(ex.id));
   },
 
   /**
    * Saves/overwrites all exercises.
    */
   saveExercises(exercises: Exercise[]): void {
-    storage.setItem(EXERCISES_KEY, exercises);
+    const cleaned = exercises.filter(ex => !isRemovedExerciseName(ex.name) && !isRemovedExerciseName(ex.id));
+    storage.setItem(EXERCISES_KEY, cleaned);
   },
 
   /**
    * Adds an exercise.
    */
   addExercise(exercise: Exercise): Exercise[] {
+    if (isRemovedExerciseName(exercise.name) || isRemovedExerciseName(exercise.id)) {
+      return this.getExercises();
+    }
     const exercises = this.getExercises();
     const updated = [exercise, ...exercises];
     this.saveExercises(updated);

@@ -23,7 +23,6 @@ export interface SetRecord {
   id: string;
   weight: number; // in kg (default)
   reps: number;
-  rpe?: number; // 1-10 rate of perceived exertion
   isWarmup?: boolean;
   timeSeconds?: number; // for TIME_BASED and CARDIO
   distanceKm?: number; // for CARDIO
@@ -40,7 +39,6 @@ export interface WorkoutLog {
   id: string;
   date: string; // YYYY-MM-DD
   startTime?: string; // HH:MM
-  duration: number; // in minutes
   routineId?: string;
   routineName?: string;
   notes: string;

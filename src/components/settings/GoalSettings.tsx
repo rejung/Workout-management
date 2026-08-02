@@ -16,7 +16,7 @@ import {
   isOHP, 
   WeightLog 
 } from '../../utils/workoutEngine';
-import { getLocalDateString } from '../../utils/dateUtils';
+import { getLocalDateString, getLastNDaysRange } from '../../utils/dateUtils';
 import { 
   getThreeLiftCurrent, 
   getGoalRemaining, 
@@ -92,10 +92,9 @@ export default function GoalSettings({ logs, weightLogs }: GoalSettingsProps) {
   };
 
   // 1. Core measurements for "Current Status" to compare against goals
-  const now = new Date();
-  const p1Start = getLocalDateString(new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000));
-  const p2Start = getLocalDateString(new Date(now.getTime() - 56 * 24 * 60 * 60 * 1000));
-  const p3Start = getLocalDateString(new Date(now.getTime() - 84 * 24 * 60 * 60 * 1000));
+  const p1Start = getLastNDaysRange(28).startDateStr;
+  const p2Start = getLastNDaysRange(56).startDateStr;
+  const p3Start = getLastNDaysRange(84).startDateStr;
 
   const weightMetrics = calculateWeightMetrics(weightLogs);
   const squatChange = getE1RMChange(logs, isSquat, p1Start, p2Start, p3Start);

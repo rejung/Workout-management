@@ -8,6 +8,7 @@ import { Exercise, MuscleCategory, LogType, WorkoutLog, Routine } from '../types
 import { Plus, Trash2, Dumbbell, Tag, Grid, Filter, AlertCircle, Copy, Check, Calendar, AlertTriangle, ListOrdered, ClipboardList, Info, Sparkles, RefreshCw } from 'lucide-react';
 import { motion } from 'motion/react';
 import { generateUUID } from '../utils/workoutEngine';
+import { isRemovedExerciseName } from '../storage/workoutRepository';
 
 interface ExerciseDatabaseProps {
   exercises: Exercise[];
@@ -33,8 +34,8 @@ export const CATEGORIES_KO: Record<MuscleCategory, string> = {
 };
 
 export const LOG_TYPES_KO: Record<LogType, string> = {
-  STANDARD: '일반 웨이트 (무게/반복/RPE)',
-  BODYWEIGHT_REPS: '맨몸/보조 (반복/RPE)',
+  STANDARD: '일반 웨이트 (무게/반복)',
+  BODYWEIGHT_REPS: '맨몸/보조 (반복)',
   TIME_BASED: '시간 기반 (분/초)',
   CARDIO: '유산소 (거리/시간)',
 };
@@ -99,8 +100,9 @@ export default function ExerciseDatabase({
   });
 
   const filteredExercises = useMemo(() => {
-    if (activeTab === 'All') return exercises;
-    return exercises.filter(ex => ex.category === activeTab);
+    const validExercises = exercises.filter(ex => !isRemovedExerciseName(ex.name) && !isRemovedExerciseName(ex.id));
+    if (activeTab === 'All') return validExercises;
+    return validExercises.filter(ex => ex.category === activeTab);
   }, [exercises, activeTab]);
 
   const referencedExerciseIds = useMemo(() => {
@@ -574,6 +576,11 @@ export default function ExerciseDatabase({
 
     if (!name.trim()) {
       showAlert('운동 명칭을 기입해 주세요.', '운동 등록 오류');
+      return;
+    }
+
+    if (isRemovedExerciseName(name)) {
+      showAlert('해당 운동 종목은 라이브러리 제외 항목입니다.', '등록 제한');
       return;
     }
 

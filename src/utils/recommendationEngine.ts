@@ -6,6 +6,7 @@
 import { WorkoutLog } from '../types';
 import { GoalSettings } from '../types/goal';
 import { getLocalDateString } from './dateUtils';
+import { getLast7DaysRange, getLast28DaysRange } from './dateRange';
 
 export type MainLift = '벤치프레스' | 'OHP' | '데드리프트' | '바벨 로우' | '스쿼트' | '러닝' | '휴식';
 
@@ -21,6 +22,8 @@ export interface RecommendationResult {
     workoutType: string;
     nextUp: string;
     nextTiming: string;
+    recoveryDays?: number;
+    lastWorkoutDate?: string;
   };
   oneLineReason?: string;
   allScores?: Record<MainLift, LiftFactorScores>;
@@ -179,36 +182,67 @@ function getOneLineReason(lift: MainLift): string {
   }
 }
 
-function getExecutionInfo(lift: MainLift, nextLift: MainLift) {
+export function formatNextRecommendationDate(
+  lastWorkoutDateStr?: string,
+  recoveryDays: number = 2
+): string {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  let baseDate = new Date(today);
+  if (lastWorkoutDateStr) {
+    const cleanStr = lastWorkoutDateStr.replace(/\./g, '-').replace(/\s+/g, '').trim();
+    const parts = cleanStr.split('-');
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      const parsed = new Date(year, month, day);
+      if (!isNaN(parsed.getTime())) {
+        baseDate = parsed;
+        baseDate.setHours(0, 0, 0, 0);
+      }
+    }
+  }
+
+  const targetDate = new Date(baseDate);
+  targetDate.setDate(targetDate.getDate() + recoveryDays);
+
+  const diffMs = targetDate.getTime() - today.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 0) {
+    return '오늘';
+  }
+  if (diffDays === 1) {
+    return '내일';
+  }
+
+  const daysOfWeek = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
+  return daysOfWeek[targetDate.getDay()];
+}
+
+function getExecutionInfo(lift: MainLift, nextLift: MainLift, lastWorkoutDate?: string) {
+  let recoveryDays = 2;
   if (lift === '휴식') {
-    return {
-      expectedDuration: '20~30분',
-      workoutType: '적극적 회복 (Recovery)',
-      nextUp: nextLift,
-      nextTiming: '내일 오전 또는 회복 시'
-    };
+    recoveryDays = 1;
+  } else if (lift === '러닝') {
+    recoveryDays = 2;
+  } else if (lift === '스쿼트' || lift === '데드리프트') {
+    recoveryDays = 2;
+  } else {
+    recoveryDays = 2;
   }
-  if (lift === '러닝') {
-    return {
-      expectedDuration: '40~50분',
-      workoutType: '유산소 심폐 지구력',
-      nextUp: nextLift,
-      nextTiming: '48시간 후'
-    };
-  }
-  if (lift === '스쿼트' || lift === '데드리프트') {
-    return {
-      expectedDuration: '65~75분',
-      workoutType: '고중량 스트렝스 & 근비대',
-      nextUp: nextLift,
-      nextTiming: '48~72시간 후'
-    };
-  }
+
+  const nextTiming = formatNextRecommendationDate(lastWorkoutDate, recoveryDays);
+
   return {
-    expectedDuration: '55~65분',
-    workoutType: '고중량 스트렝스 & 근비대',
+    expectedDuration: lift === '휴식' ? '20~30분' : (lift === '러닝' ? '40~50분' : (lift === '스쿼트' || lift === '데드리프트' ? '65~75분' : '55~65분')),
+    workoutType: lift === '휴식' ? '적극적 회복 (Recovery)' : (lift === '러닝' ? '유산소 심폐 지구력' : '고중량 스트렝스 & 근비대'),
     nextUp: nextLift,
-    nextTiming: '48시간 후'
+    nextTiming,
+    recoveryDays,
+    lastWorkoutDate
   };
 }
 
@@ -265,15 +299,11 @@ export function calculateMultiFactorScores(
   daysSinceLastMap['휴식'] = consecutiveTrainingDays;
 
   // 2. Weekly & 4-Week Frequency analysis
-  const sevenDaysAgo = new Date(todayStr);
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-  const sevenDaysAgoStr = sevenDaysAgo.toISOString().slice(0, 10);
+  const { startDateStr: sevenDaysAgoStr } = getLast7DaysRange(todayStr);
   const last7DaysLogs = sorted.filter(l => l.date >= sevenDaysAgoStr && l.date <= todayStr);
   const last7DaysCount = last7DaysLogs.length;
 
-  const fourWeeksAgo = new Date(todayStr);
-  fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 27);
-  const fourWeeksAgoStr = fourWeeksAgo.toISOString().slice(0, 10);
+  const { startDateStr: fourWeeksAgoStr } = getLast28DaysRange(todayStr);
   const last28DaysLogs = sorted.filter(l => l.date >= fourWeeksAgoStr && l.date <= todayStr);
 
   let pushCount = 0, pullCount = 0, legCount = 0, cardioCount = 0;
@@ -526,7 +556,7 @@ export function getNextRecommendation(
       date: recDateStr,
       friendlyDate: getFriendlyRecommendationDate(todayStr),
       actionChecklist: ACTION_CHECKLIST_MAP[mainLift],
-      executionInfo: getExecutionInfo(mainLift, '스쿼트'),
+      executionInfo: getExecutionInfo(mainLift, '스쿼트', todayStr),
       oneLineReason: getOneLineReason(mainLift),
       allScores: filteredScores,
       topCandidates
@@ -622,6 +652,9 @@ export function getNextRecommendation(
     rejectionReason: getRejectionReason(item.lift, item),
   }));
 
+  const lastLog = sortedLogs[0];
+  const lastWorkoutDate = lastLog ? lastLog.date : todayStr;
+
   return {
     mainLift,
     reasons: uniqueReasons,
@@ -629,7 +662,7 @@ export function getNextRecommendation(
     date: recDateStr,
     friendlyDate: getFriendlyRecommendationDate(todayStr),
     actionChecklist: ACTION_CHECKLIST_MAP[mainLift],
-    executionInfo: getExecutionInfo(mainLift, secondBestLift),
+    executionInfo: getExecutionInfo(mainLift, secondBestLift, lastWorkoutDate),
     oneLineReason: getOneLineReason(mainLift),
     allScores: filteredScores,
     topCandidates

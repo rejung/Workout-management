@@ -159,7 +159,6 @@ export default function App() {
         const now = new Date();
         return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       })(),
-      duration: log.duration,
       routineId: log.routineId,
       routineName: log.routineName,
       notes: log.notes || '',
@@ -175,6 +174,11 @@ export default function App() {
   // Routine Actions
   const handleAddRoutine = (r: Routine) => {
     const updated = [r, ...routines];
+    saveRoutinesToStorage(updated);
+  };
+
+  const handleUpdateRoutine = (r: Routine) => {
+    const updated = routines.map(item => item.id === r.id ? r : item);
     saveRoutinesToStorage(updated);
   };
 
@@ -437,6 +441,7 @@ export default function App() {
                   routines={routines}
                   exercises={exercises}
                   onAddRoutine={handleAddRoutine}
+                  onUpdateRoutine={handleUpdateRoutine}
                   onDeleteRoutine={handleDeleteRoutine}
                   onShowAlert={triggerAlert}
                   onShowConfirm={triggerConfirm}

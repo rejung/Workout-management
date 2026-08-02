@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import { Flame, Compass, ChevronRight, Check, BarChart2, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import { RecommendationResult } from '../../utils/workoutEngine';
+import { formatNextRecommendationDate } from '../../utils/recommendationEngine';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface CardioMileageRow {
@@ -95,9 +96,6 @@ export function RecommendedWorkoutCard({
   };
 
   // Core execution details (실행 정보)
-  const expectedDuration = recommendation.executionInfo?.expectedDuration || (isRest ? '20~30분' : '55~65분');
-  const workoutType = recommendation.executionInfo?.workoutType || (isRest ? '적극적 회복' : '고중량 스트렝스 & 근비대');
-  
   let nextUp = recommendation.executionInfo?.nextUp || '스쿼트';
   if (!recommendation.executionInfo) {
     if (recommendation.mainLift === '스쿼트') nextUp = '벤치프레스';
@@ -107,9 +105,17 @@ export function RecommendedWorkoutCard({
     else nextUp = '스쿼트';
   }
 
-  const nextTiming = recommendation.executionInfo?.nextTiming || '오늘 오후';
-  const actionChecklist = recommendation.actionChecklist || [];
-  const currentChecklist = actionChecklist.length > 0 ? actionChecklist : (isRest ? ['스트레칭', '폼롤러 마사지'] : ['워밍업 세트', '본 세트 수행', '보조 운동', '쿨다운']);
+  const rawNextTiming = recommendation.executionInfo?.nextTiming;
+  const nextRecommendationDisplay = (() => {
+    if (rawNextTiming && (rawNextTiming === '오늘' || rawNextTiming === '내일' || rawNextTiming.endsWith('요일'))) {
+      return rawNextTiming;
+    }
+    return formatNextRecommendationDate(
+      recommendation.executionInfo?.lastWorkoutDate || recommendation.date,
+      recommendation.executionInfo?.recoveryDays ?? 2
+    );
+  })();
+
   const actionTags = recommendation.representativeExercises || (isRest ? ['회복', '이완'] : ['주동근', '코어']);
 
   return (
@@ -139,7 +145,7 @@ export function RecommendedWorkoutCard({
         {/* Top Header Label & Completed Badge */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">🏋️ 오늘 추천</span>
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">🏋️ 오늘의 추천</span>
           </div>
           {isRest && isRestCompleted && (
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/15 text-emerald-400 border border-emerald-500/35 tracking-wider uppercase">
@@ -158,52 +164,18 @@ export function RecommendedWorkoutCard({
           </p>
         </div>
 
-        {/* ③ 오늘 해야 할 일 (체크리스트) */}
-        <div className="space-y-3.5 pt-1">
-          <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">오늘 해야 할 일</span>
-          <div className="space-y-3">
-            {currentChecklist.map((item, idx) => (
-              <div 
-                key={idx} 
-                className={`flex items-start gap-3 text-xs transition-all duration-350 ${
-                  isRest && isRestCompleted ? 'opacity-40 text-slate-500' : 'text-slate-200'
-                }`}
-              >
-                <div className={`mt-0.5 w-4 h-4 rounded-md flex items-center justify-center shrink-0 border transition-all duration-200 ${
-                  isRest && isRestCompleted 
-                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 scale-105' 
-                    : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                }`}>
-                  <Check className="w-3 h-3 stroke-[3]" />
-                </div>
-                <span className={`font-bold transition-all duration-350 ${isRest && isRestCompleted ? 'line-through' : ''}`}>
-                  {item}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
         {/* Divider */}
         <div className="border-t border-slate-800/40 my-1" />
 
-        {/* ④ 실행 정보 */}
-        <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-xs py-1">
-          <div className="flex flex-col border-b border-slate-800/20 pb-1.5 justify-center">
-            <span className="font-extrabold text-slate-100 text-sm leading-tight">{expectedDuration}</span>
-            <span className="text-slate-500 font-bold text-[9px] uppercase tracking-wider mt-0.5">예상 시간</span>
+        {/* ④ 실행 정보 (다음 운동, 추천 시점) */}
+        <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs py-1">
+          <div className="flex flex-col justify-center">
+            <span className="text-slate-500 font-bold text-[9px] uppercase tracking-wider">다음 운동</span>
+            <span className="font-extrabold text-slate-100 text-sm sm:text-base leading-tight mt-0.5">{nextUp}</span>
           </div>
-          <div className="flex flex-col border-b border-slate-800/20 pb-1.5 justify-center">
-            <span className="font-extrabold text-slate-100 text-sm leading-tight">{nextUp}</span>
-            <span className="text-slate-500 font-bold text-[9px] uppercase tracking-wider mt-0.5">다음 운동</span>
-          </div>
-          <div className="flex flex-col border-b border-slate-800/20 pb-1.5 justify-center">
-            <span className="font-extrabold text-slate-100 text-sm leading-tight">{nextTiming}</span>
-            <span className="text-slate-500 font-bold text-[9px] uppercase tracking-wider mt-0.5">추천 시점</span>
-          </div>
-          <div className="flex flex-col border-b border-slate-800/20 pb-1.5 justify-center">
-            <span className="font-extrabold text-slate-100 text-sm leading-tight">{workoutType}</span>
-            <span className="text-slate-500 font-bold text-[9px] uppercase tracking-wider mt-0.5">훈련 목적</span>
+          <div className="flex flex-col justify-center">
+            <span className="text-slate-500 font-bold text-[9px] uppercase tracking-wider">추천 시점</span>
+            <span className="font-extrabold text-slate-100 text-sm sm:text-base leading-tight mt-0.5">{nextRecommendationDisplay}</span>
           </div>
         </div>
 
@@ -216,7 +188,7 @@ export function RecommendedWorkoutCard({
           ))}
         </div>
 
-        {/* ⑥ 추천 후보 보기 (Accordion) */}
+        {/* ⑥ 추천 후보 (Accordion) */}
         {recommendation.topCandidates && recommendation.topCandidates.length > 0 && (
           <div className="space-y-3">
             <button
@@ -226,7 +198,7 @@ export function RecommendedWorkoutCard({
             >
               <div className="flex items-center gap-2">
                 <Compass className="w-3.5 h-3.5 text-emerald-400" />
-                <span>후보 운동 {showTopCandidates ? '접기 ▲' : '보기 ▼'}</span>
+                <span>후보 운동</span>
               </div>
               {showTopCandidates ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
@@ -283,7 +255,7 @@ export function RecommendedWorkoutCard({
           </div>
         )}
 
-        {/* ⑦ 오늘 추천 이유 보기 (Accordion) */}
+        {/* ⑦ 오늘 추천 이유 (Accordion) */}
         {recommendation.reasons && recommendation.reasons.length > 0 && (
           <div className="space-y-3">
             <button
@@ -293,7 +265,7 @@ export function RecommendedWorkoutCard({
             >
               <div className="flex items-center gap-2">
                 <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                <span>추천 이유 {showReasons ? '접기 ▲' : '보기 ▼'}</span>
+                <span>추천 이유</span>
               </div>
               {showReasons ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
@@ -307,7 +279,7 @@ export function RecommendedWorkoutCard({
                   className="overflow-hidden"
                 >
                   <div className="bg-slate-950/60 border border-slate-800/60 rounded-xl p-3.5 space-y-2">
-                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">분석 기반 추천 사유 (Why)</span>
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">분석 기반 추천 사유</span>
                     <div className="space-y-1.5">
                       {recommendation.reasons.map((reason, idx) => (
                         <div key={idx} className="text-xs text-slate-300 flex items-start gap-2 font-medium">
@@ -332,7 +304,7 @@ export function RecommendedWorkoutCard({
           >
             <div className="flex items-center gap-2">
               <BarChart2 className="w-3.5 h-3.5 text-indigo-400" />
-              <span>평가 기준 {showScores ? '접기 ▲' : '보기 ▼'}</span>
+              <span>평가 기준</span>
             </div>
             {showScores ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>

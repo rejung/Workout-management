@@ -28,8 +28,8 @@ export const DEFAULT_EXERCISES: Exercise[] = [
   { id: 'pull-up', name: '풀업 (Pull-Up)', category: 'Back', logType: 'BODYWEIGHT_REPS' },
   { id: 'band-pull-up', name: '밴드 풀업 (Band Pull-Up)', category: 'Back', logType: 'BODYWEIGHT_REPS' },
   { id: 'barbell-row', name: '바벨 로우 (Barbell Row)', category: 'Back', logType: 'STANDARD', canonicalName: '바벨 로우' },
-  { id: 'lat-pulldown', name: '렛풀다운 (Lat Pulldown)', category: 'Back', logType: 'STANDARD' },
-  { id: 'seated-row', name: '시티드 케이블 로우 (Seated Cable Row)', category: 'Back', logType: 'STANDARD' },
+  { id: 'lat-pulldown', name: '랫 풀 다운 (Lat Pulldown)', category: 'Back', logType: 'STANDARD' },
+  { id: 'seated-row', name: '시티드 케이블 로우 (Seated Cable Row)', category: 'Back', logType: 'STANDARD', canonicalName: '시티드 케이블 로우' },
   
   // Legs
   { id: 'squat', name: '스쿼트 (Squat)', category: 'Legs', logType: 'STANDARD', canonicalName: '스쿼트' },
@@ -41,6 +41,7 @@ export const DEFAULT_EXERCISES: Exercise[] = [
   // Shoulders
   { id: 'overhead-press', name: '오버헤드 프레스 (Overhead Press)', category: 'Shoulders', logType: 'STANDARD', canonicalName: 'OHP' },
   { id: 'dumbbell-shoulder-press', name: '덤벨 숄더 프레스 (Dumbbell Shoulder Press)', category: 'Shoulders', logType: 'STANDARD' },
+  { id: 'dumbbell-shrug', name: '덤벨 슈러그 (Dumbbell Shrug)', category: 'Shoulders', logType: 'STANDARD' },
   { id: 'lateral-raise', name: '사이드 레터럴 레이즈 (Side Lateral Raise)', category: 'Shoulders', logType: 'STANDARD' },
   { id: 'face-pull', name: '페이스 풀 (Face Pull)', category: 'Shoulders', logType: 'STANDARD' },
   
@@ -60,7 +61,6 @@ export const DEFAULT_EXERCISES: Exercise[] = [
   { id: 'stationary-bike', name: '실내 자전거 (Stationary Bike)', category: 'Cardio', logType: 'CARDIO' },
 
   // Custom additions for user routines from image
-  { id: 'seated-cable-row', name: '시티드 케이블 로우', category: 'Back', logType: 'STANDARD' },
   { id: 'band-pull-up-simple', name: '밴드 풀업', category: 'Back', logType: 'BODYWEIGHT_REPS' },
   { id: 'face-pull-rule', name: '페이스 룰 (Face Pull)', category: 'Shoulders', logType: 'STANDARD' },
   { id: 'overhead-extension', name: '오버헤드 익스텐션', category: 'Arms', logType: 'STANDARD' },
@@ -75,7 +75,7 @@ export const DEFAULT_ROUTINES: Routine[] = [
     description: '',
     exercises: [
       { exerciseId: 'barbell-row', exerciseName: '바벨 로우 (Barbell Row)', category: 'Back', targetSetsCount: 7 },
-      { exerciseId: 'seated-cable-row', exerciseName: '시티드 케이블 로우', category: 'Back', targetSetsCount: 4 },
+      { exerciseId: 'seated-row', exerciseName: '시티드 케이블 로우 (Seated Cable Row)', category: 'Back', targetSetsCount: 4 },
       { exerciseId: 'band-pull-up-simple', exerciseName: '밴드 풀업', category: 'Back', targetSetsCount: 4 },
       { exerciseId: 'face-pull', exerciseName: '페이스 풀 (Face Pull)', category: 'Shoulders', targetSetsCount: 4 }
     ]

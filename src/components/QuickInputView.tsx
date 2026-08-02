@@ -128,7 +128,6 @@ export default function QuickInputView({
     const now = new Date();
     return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   });
-  const [workoutDuration, setWorkoutDuration] = useState<number>(60);
   const [selectedRoutineId, setSelectedRoutineId] = useState<string>('');
   const [workoutNotes, setWorkoutNotes] = useState<string>('');
   const [activeSessions, setActiveSessions] = useState<ExerciseSession[]>([]);
@@ -278,7 +277,6 @@ export default function QuickInputView({
             id: generateUUID(),
             weight: prevSet.weight,
             reps: prevSet.reps,
-            rpe: prevSet.rpe || 8,
             isWarmup: prevSet.isWarmup,
             timeSeconds: prevSet.timeSeconds,
             distanceKm: prevSet.distanceKm
@@ -291,7 +289,6 @@ export default function QuickInputView({
             id: generateUUID(),
             weight: 0,
             reps: exLogType === 'TIME_BASED' ? 0 : 10,
-            rpe: 8,
             isWarmup: i === 0 && count > 3 ? true : false,
             timeSeconds: exLogType === 'TIME_BASED' ? 60 : exLogType === 'CARDIO' ? 0 : undefined,
             distanceKm: exLogType === 'CARDIO' ? 0 : undefined
@@ -354,7 +351,6 @@ export default function QuickInputView({
           id: generateUUID(),
           weight: prevSet.weight,
           reps: prevSet.reps,
-          rpe: prevSet.rpe || 8,
           isWarmup: prevSet.isWarmup,
           timeSeconds: prevSet.timeSeconds,
           distanceKm: prevSet.distanceKm
@@ -367,7 +363,6 @@ export default function QuickInputView({
           id: generateUUID(),
           weight: 0,
           reps: exLogType === 'TIME_BASED' ? 0 : 10,
-          rpe: 8,
           isWarmup: false,
           timeSeconds: exLogType === 'TIME_BASED' ? 60 : exLogType === 'CARDIO' ? 0 : undefined,
           distanceKm: exLogType === 'CARDIO' ? 0 : undefined
@@ -410,7 +405,6 @@ export default function QuickInputView({
           id: newSetId,
           weight: lastSet ? lastSet.weight : 0,
           reps: lastSet ? lastSet.reps : (exLogType === 'TIME_BASED' ? 0 : 10),
-          rpe: lastSet ? lastSet.rpe : 8,
           isWarmup: false,
           timeSeconds: lastSet ? lastSet.timeSeconds : (exLogType === 'TIME_BASED' ? 60 : undefined),
           distanceKm: lastSet ? lastSet.distanceKm : undefined
@@ -514,7 +508,6 @@ export default function QuickInputView({
       id: generateUUID(),
       date: workoutDate,
       startTime: workoutStartTime,
-      duration: workoutDuration,
       routineId: selectedRoutineId || undefined,
       routineName: selectedRoutineId ? routines.find(r => r.id === selectedRoutineId)?.name : undefined,
       notes: workoutNotes,
@@ -539,14 +532,6 @@ export default function QuickInputView({
     }
     return sum;
   }, 0);
-
-  const avgRPE = (() => {
-    const rpes = activeSetsArray
-      .filter(s => completedSets[s.id] === true && s.rpe !== undefined)
-      .map(s => s.rpe as number);
-    if (rpes.length === 0) return 0;
-    return rpes.reduce((a, b) => a + b, 0) / rpes.length;
-  })();
 
   return (
     <div id="quick-input-panel" className="max-w-2xl mx-auto space-y-6">
@@ -650,21 +635,13 @@ export default function QuickInputView({
                 />
               </div>
               <div className="space-y-1">
-                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">소요 시간 (분)</span>
-                <div className="flex gap-2">
-                  <input
-                    type="time"
-                    value={workoutStartTime}
-                    onChange={(e) => setWorkoutStartTime(e.target.value)}
-                    className="w-1/2 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs font-bold text-zinc-800 focus:outline-none"
-                  />
-                  <input
-                    type="number"
-                    value={workoutDuration}
-                    onChange={(e) => setWorkoutDuration(Number(e.target.value))}
-                    className="w-1/2 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs font-bold text-zinc-800 focus:outline-none"
-                  />
-                </div>
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">시작 시간</span>
+                <input
+                  type="time"
+                  value={workoutStartTime}
+                  onChange={(e) => setWorkoutStartTime(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-zinc-800 focus:outline-none"
+                />
               </div>
             </div>
 
@@ -691,7 +668,7 @@ export default function QuickInputView({
             {/* D. Live Session Analytics Overview Banner */}
             {activeSessions.length > 0 && (
               <div className="bg-gradient-to-r from-zinc-900 to-zinc-850 text-white rounded-xl p-4 border border-zinc-800 shadow-lg flex items-center justify-between">
-                <div className="grid grid-cols-4 gap-4 w-full divide-x divide-zinc-800 text-center">
+                <div className="grid grid-cols-3 gap-4 w-full divide-x divide-zinc-800 text-center">
                   <div>
                     <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest block">활성 종목</span>
                     <span className="text-sm font-black text-white block mt-0.5">{totalExercises}개</span>
@@ -703,10 +680,6 @@ export default function QuickInputView({
                   <div>
                     <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest block">실시간 볼륨</span>
                     <span className="text-sm font-black text-emerald-400 block mt-0.5">{estimatedWorkoutVolume.toLocaleString()}kg</span>
-                  </div>
-                  <div>
-                    <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest block">평균 RPE</span>
-                    <span className="text-sm font-black text-indigo-300 block mt-0.5">{avgRPE > 0 ? avgRPE.toFixed(1) : '-'}</span>
                   </div>
                 </div>
               </div>

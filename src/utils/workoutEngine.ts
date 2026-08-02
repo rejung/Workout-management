@@ -5,6 +5,7 @@
 
 import { WorkoutLog, Exercise } from '../types';
 import { getLocalDateString, getFriendlyRecommendationDate } from './dateUtils';
+import { getLast28DaysRange } from './dateRange';
 import { getNextRecommendation as getNextRecFromEngine } from './recommendationEngine';
 import { calculateMileage, calculateRunningPB, isRunningExercise } from '../domain/cardio';
 
@@ -143,8 +144,9 @@ export function getMatcherDiagnostics(
 export function isSquat(exerciseId: string, name: string): boolean {
   const id = exerciseId.toLowerCase();
   const n = name.toLowerCase();
+  const nClean = n.replace(/\s+/g, '');
   
-  const isBaseSquat = id === 'squat' || n.includes('스쿼트') || n.includes('squat');
+  const isBaseSquat = id === 'squat' || id === 'barbell-squat' || id === 'back-squat' || nClean.includes('스쿼트') || nClean.includes('squat');
   if (!isBaseSquat) return false;
 
   // Exclude variation lifts to strictly match the main compound barbell back squat
@@ -152,17 +154,19 @@ export function isSquat(exerciseId: string, name: string): boolean {
     '스미스', 'smith', '덤벨', 'dumbbell', '핵', 'hack', '점프', 'jump',
     '와이드', 'wide', '스플릿', 'split', '불가리안', 'bulgarian',
     '피스톨', 'pistol', '런지', 'lunge', '고블렛', 'goblet', '하프', 'half',
-    '프론트', 'front', '오버헤드', 'overhead', '싱글', 'single', '레그', 'leg',
+    '프론트', 'front', '오버헤드', 'overhead', '싱글', 'single',
     'v스쿼트', 'v 스쿼트', 'v-squat', 'vsquat', '카프레이즈', 'calf raise', 'calf', 'raise'
   ];
-  return !excludes.some(ex => n.includes(ex));
+  return !excludes.some(ex => nClean.includes(ex.replace(/\s+/g, '')));
 }
 
 export function isBenchPress(exerciseId: string, name: string): boolean {
   const id = exerciseId.toLowerCase();
   const n = name.toLowerCase();
+  const nClean = n.replace(/\s+/g, '');
   
-  const isBaseBp = id === 'bench-press' || n.includes('벤치프레스') || n.includes('bench press') || n.includes('benchpress');
+  const isBaseBp = id === 'bench-press' || id === 'benchpress' || id === 'barbell-bench-press' ||
+    nClean.includes('벤치프레스') || nClean.includes('benchpress') || nClean.includes('bench-press');
   if (!isBaseBp) return false;
 
   // Exclude variation lifts to strictly match flat barbell bench press
@@ -171,34 +175,35 @@ export function isBenchPress(exerciseId: string, name: string): boolean {
     '스미스', 'smith', '머신', 'machine', '체스트', 'chest', '플라이', 'fly',
     '클로즈', 'close', 'chest press machine', 'pec deck', 'fly machine'
   ];
-  return !excludes.some(ex => n.includes(ex));
+  return !excludes.some(ex => nClean.includes(ex.replace(/\s+/g, '')));
 }
 
 export function isDeadlift(exerciseId: string, name: string): boolean {
   const id = exerciseId.toLowerCase();
   const n = name.toLowerCase();
+  const nClean = n.replace(/\s+/g, '');
   
-  const isBaseDl = id === 'deadlift' || n.includes('데드리프트') || n.includes('deadlift');
+  const isBaseDl = id === 'deadlift' || id === 'barbell-deadlift' || id === 'conventional-deadlift' ||
+    nClean.includes('데드리프트') || nClean.includes('deadlift');
   if (!isBaseDl) return false;
 
   // Exclude variation lifts to strictly match conventional barbell deadlift
   const excludes = [
     '로마니안', '루마니안', 'romanian', '덤벨', 'dumbbell', '스모', 'sumo',
-    '스티프', 'stiff', '싱글', 'single', '레그', 'leg', 'trap bar', 'hex bar'
+    '스티프', 'stiff', '싱글', 'single', 'trap bar', 'hex bar'
   ];
-  return !excludes.some(ex => n.includes(ex));
+  return !excludes.some(ex => nClean.includes(ex.replace(/\s+/g, '')));
 }
 
 export function isOHP(exerciseId: string, name: string): boolean {
   const id = exerciseId.toLowerCase();
   const n = name.toLowerCase();
+  const nClean = n.replace(/\s+/g, '');
   
-  const isBaseOhp = id === 'overhead-press' || id === 'ohp' ||
-    n.includes('오버헤드 프레스') || n.includes('오버헤드프레스') ||
-    n.includes('overhead press') || n.includes('overheadpress') ||
-    n.includes('ohp') || n.includes('밀리터리 프레스') ||
-    n.includes('밀리터리프레스') || n.includes('military press') ||
-    n.includes('militarypress') || n.includes('밀프');
+  const isBaseOhp = id === 'overhead-press' || id === 'ohp' || id === 'overheadpress' ||
+    nClean.includes('오버헤드프레스') || nClean.includes('overheadpress') ||
+    nClean.includes('ohp') || nClean.includes('밀리터리프레스') ||
+    nClean.includes('militarypress') || nClean.includes('밀프');
   if (!isBaseOhp) return false;
 
   // Exclude variation lifts to strictly match overhead press / military press
@@ -207,7 +212,7 @@ export function isOHP(exerciseId: string, name: string): boolean {
     '아놀드', 'arnold', '레이즈', 'raise', '시티드', 'seated',
     'shoulder press machine', 'dumbbell shoulder press'
   ];
-  return !excludes.some(ex => n.includes(ex));
+  return !excludes.some(ex => nClean.includes(ex.replace(/\s+/g, '')));
 }
 
 // Deduce MuscleCategory from exercise name
@@ -232,6 +237,9 @@ export function deduceCategory(name: string): any {
   }
   if (n.includes('페이스풀') || n.includes('페이스 풀') || n.includes('face pull') || n.includes('facepull')) {
     return 'Shoulders';
+  }
+  if (n.includes('랫풀다운') || n.includes('랫 풀 다운') || n.includes('랫풀') || n.includes('렛풀다운') || n.includes('렛 풀 다운') || n.includes('렛풀') || n.includes('lat pulldown') || n.includes('pulldown') || n.includes('풀다운')) {
+    return 'Back';
   }
 
   // 2. Class/Category-level rules
@@ -306,9 +314,7 @@ export function calculateWeightMetrics(weightLogs: WeightLog[]) {
   const current = sorted[0].weight;
 
   // Find a log from around 4 weeks ago (28 days ago)
-  const now = new Date();
-  const fourWeeksAgoDate = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000);
-  const fourWeeksAgoStr = getLocalDateString(fourWeeksAgoDate);
+  const { startDateStr: fourWeeksAgoStr } = getLast28DaysRange();
 
   // Find closest log before or equal to 28 days ago, or oldest
   let fourWeeksAgoLog = sorted.find(w => w.date <= fourWeeksAgoStr);

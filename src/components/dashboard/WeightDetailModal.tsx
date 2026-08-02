@@ -7,7 +7,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, TrendingUp, TrendingDown, Target, Calendar, Award, Plus, BarChart2 } from 'lucide-react';
 import { WeightLog } from '../../utils/workoutEngine';
-import { formatWorkoutDateShort } from '../../utils/dateUtils';
+import { formatWorkoutDateShort, getLastNDaysRange } from '../../utils/dateUtils';
 
 const formatXAxisMonth = (dateStr: string) => {
   const parts = dateStr.split('-');
@@ -101,29 +101,28 @@ export default function WeightDetailModal({
   const filteredLogs = useMemo(() => {
     if (sortedLogs.length === 0) return [];
     
-    const now = new Date();
-    let cutoffDate = new Date();
+    let cutoffStr = '';
 
     switch (selectedPeriod) {
       case '7d':
-        cutoffDate.setDate(now.getDate() - 7);
+        cutoffStr = getLastNDaysRange(7).startDateStr;
         break;
       case '4w':
-        cutoffDate.setDate(now.getDate() - 28);
+        cutoffStr = getLastNDaysRange(28).startDateStr;
         break;
       case '3m':
-        cutoffDate.setDate(now.getDate() - 90);
+        cutoffStr = getLastNDaysRange(90).startDateStr;
         break;
       case '1y':
-        cutoffDate.setDate(now.getDate() - 365);
+        cutoffStr = getLastNDaysRange(365).startDateStr;
         break;
       case 'all':
         return sortedLogs;
     }
 
-    const cutoffStr = cutoffDate.toISOString().split('T')[0];
     return sortedLogs.filter(log => log.date >= cutoffStr);
   }, [sortedLogs, selectedPeriod]);
+
 
   // Calculations for stats
   const stats = useMemo(() => {

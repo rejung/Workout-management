@@ -245,18 +245,9 @@ export default function WorkoutHistory({
                     </h3>
                   </div>
 
-                  {/* Stats Grid - Duration, Volume, Exercise Count, Sets Count */}
-                  <div className="grid grid-cols-2 gap-3 bg-zinc-50/70 p-3.5 rounded-xl border border-zinc-100/50">
-                    {/* Exercise Duration (3) */}
-                    <div className="space-y-0.5">
-                      <span className="text-[10px] text-zinc-400 uppercase tracking-wider block">운동 시간</span>
-                      <div className="flex items-center gap-1 text-xs font-semibold text-zinc-700">
-                        <Clock className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                        <span>{log.duration}분</span>
-                      </div>
-                    </div>
-
-                    {/* Total Volume or Distance (4) */}
+                  {/* Stats Grid - Volume/Distance, Exercise Count, Sets Count */}
+                  <div className="grid grid-cols-3 gap-3 bg-zinc-50/70 p-3.5 rounded-xl border border-zinc-100/50">
+                    {/* Total Volume or Distance */}
                     <div className="space-y-0.5">
                       <span className="text-[10px] text-zinc-400 uppercase tracking-wider block">
                         {stats.isOnlyCardio ? '총 거리' : '총 볼륨'}
@@ -271,7 +262,7 @@ export default function WorkoutHistory({
                       </div>
                     </div>
 
-                    {/* Exercise Count (5) */}
+                    {/* Exercise Count */}
                     <div className="space-y-0.5">
                       <span className="text-[10px] text-zinc-400 uppercase tracking-wider block">운동 종목 수</span>
                       <div className="flex items-center gap-1 text-xs font-semibold text-zinc-700">
@@ -280,7 +271,7 @@ export default function WorkoutHistory({
                       </div>
                     </div>
 
-                    {/* Total Sets Count (6) */}
+                    {/* Total Sets Count */}
                     <div className="space-y-0.5">
                       <span className="text-[10px] text-zinc-400 uppercase tracking-wider block">총 세트 수</span>
                       <div className="flex items-center gap-1 text-xs font-semibold text-zinc-700">
@@ -373,11 +364,7 @@ export default function WorkoutHistory({
               {/* Modal Content - Scrollable list */}
               <div className="p-6 overflow-y-auto space-y-6">
                 {/* Stats row inside detail */}
-                <div className="grid grid-cols-4 gap-2 bg-zinc-50 border border-zinc-150 rounded-xl p-3 text-center">
-                  <div className="space-y-0.5">
-                    <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block">소요 시간</span>
-                    <span className="text-xs font-extrabold text-zinc-800 font-mono">{selectedLog.duration}분</span>
-                  </div>
+                <div className="grid grid-cols-3 gap-2 bg-zinc-50 border border-zinc-150 rounded-xl p-3 text-center">
                   <div className="space-y-0.5">
                     <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block">
                       {getLogStats(selectedLog).isOnlyCardio ? '총 거리' : '누적 중량'}
@@ -435,9 +422,6 @@ export default function WorkoutHistory({
                                 <th className="pb-2 font-semibold text-right">
                                   {logType === 'CARDIO' || logType === 'TIME_BASED' ? '수행 시간 (Duration)' : '반복 (Reps)'}
                                 </th>
-                                {logType !== 'CARDIO' && (
-                                  <th className="pb-2 font-semibold text-right">수행 강도 (RPE)</th>
-                                )}
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-zinc-50">
@@ -469,11 +453,6 @@ export default function WorkoutHistory({
                                         ? getCardioDuration(set)
                                         : `${set.reps}회`}
                                     </td>
-                                    {logType !== 'CARDIO' && (
-                                      <td className="py-2.5 text-right text-zinc-600">
-                                        {set.rpe ? `RPE ${set.rpe}` : '-'}
-                                      </td>
-                                    )}
                                   </tr>
                                 );
                               })}

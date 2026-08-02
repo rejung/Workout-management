@@ -6,6 +6,7 @@
 import { WorkoutLog } from '../../types';
 import { extractCardioRecord } from './cardioDomain';
 import { formatRaceTime } from './formatRaceTime';
+import { getLast7DaysRange } from '../../utils/dateRange';
 
 export interface MileageResult {
   recent4Weeks: number;
@@ -136,21 +137,20 @@ export function calculatePace(distanceKm: number, timeSeconds: number): string {
 }
 
 /**
- * Calculates cumulative cardio stats for the last 7 days.
+ * Calculates cumulative cardio stats for the last 7 days (rolling 7 days: today + 6 days prior).
  */
 export function calculateWeeklyStats(
   logs: WorkoutLog[],
-  exerciseMatcher: (id: string, name: string) => boolean
+  exerciseMatcher: (id: string, name: string) => boolean,
+  baseDateStr?: string
 ): WeeklyCardioStats {
-  const today = new Date();
-  const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+  const { startDateStr, endDateStr } = getLast7DaysRange(baseDateStr);
 
   let weeklyDistance = 0;
   let weeklyTimeSeconds = 0;
 
   for (const log of logs) {
-    if (log.date >= sevenDaysAgoStr) {
+    if (log.date >= startDateStr && log.date <= endDateStr) {
       for (const ex of log.exercises) {
         if (exerciseMatcher(ex.exerciseId, ex.exerciseName)) {
           for (const set of ex.sets) {
@@ -172,3 +172,4 @@ export function calculateWeeklyStats(
     weeklyPace,
   };
 }
+

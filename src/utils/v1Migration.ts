@@ -5,6 +5,7 @@
 
 import * as XLSX from 'xlsx';
 import { WorkoutLog, Routine, Exercise, ExerciseSession, SetRecord, MuscleCategory } from '../types';
+import { DEFAULT_EXERCISES } from '../constants';
 import { 
   calculateSetE1RM, 
   getMaxE1RMForExercise, 
@@ -143,6 +144,168 @@ function isValidExerciseName(name: string): boolean {
   return true;
 }
 
+// Clean and normalize exercise names for matching
+export function normalizeExerciseName(str: string): string {
+  if (!str) return '';
+  return str.toLowerCase().replace(/[^a-z0-9가-힣]/g, '');
+}
+
+// Alias mapping for common exercise names/variations to canonical exercise IDs
+const EXERCISE_ALIAS_MAP: Record<string, string> = {
+  // Back
+  '렛풀다운': 'lat-pulldown',
+  '랫풀다운': 'lat-pulldown',
+  '랫풀': 'lat-pulldown',
+  '렛풀': 'lat-pulldown',
+  'latpulldown': 'lat-pulldown',
+  'pulldown': 'lat-pulldown',
+  '풀다운': 'lat-pulldown',
+  '시티드케이블로우': 'seated-row',
+  '시티드로우': 'seated-row',
+  '시티드케이블': 'seated-row',
+  'seatedcablerow': 'seated-row',
+  'seatedrow': 'seated-row',
+  '바벨로우': 'barbell-row',
+  'barbellrow': 'barbell-row',
+  '풀업': 'pull-up',
+  'pullup': 'pull-up',
+  '턱걸이': 'pull-up',
+  '밴드풀업': 'band-pull-up',
+  '밴드턱걸이': 'band-pull-up',
+  'bandpullup': 'band-pull-up',
+
+  // Chest
+  '벤치프레스': 'bench-press',
+  'benchpress': 'bench-press',
+  '벤치': 'bench-press',
+  '플랫벤치프레스': 'bench-press',
+  '인클라인벤치프레스': 'incline-bench-press',
+  '인클라인덤벨프레스': 'incline-dumbbell-press',
+  'inclinedumbbellpress': 'incline-dumbbell-press',
+  '인클라인벤치': 'incline-bench-press',
+  'inclinebenchpress': 'incline-bench-press',
+  '덤벨벤치프레스': 'dumbbell-bench-press',
+  '덤벨벤치': 'dumbbell-bench-press',
+  'dumbbellbenchpress': 'dumbbell-bench-press',
+  '케이블플라이': 'cable-fly',
+  '체스트플라이': 'cable-fly',
+  'cablefly': 'cable-fly',
+  'dips': 'dips',
+  '딥스': 'dips',
+  '푸쉬업': 'push-up',
+  'pushup': 'push-up',
+  '팔굽혀펴기': 'push-up',
+
+  // Legs
+  '스쿼트': 'squat',
+  'squat': 'squat',
+  '백스쿼트': 'squat',
+  'backsquat': 'squat',
+  '레그프레스': 'leg-press',
+  'legpress': 'leg-press',
+  '레그익스텐션': 'leg-extension',
+  'legextension': 'leg-extension',
+  '레그컬': 'leg-curl',
+  'legcurl': 'leg-curl',
+  '카프레이즈': 'calf-raise-simple',
+  'calfraise': 'calf-raise-simple',
+  '런지': 'lunge',
+  'lunge': 'lunge',
+
+  // Shoulders
+  '오버헤드프레스': 'overhead-press',
+  'overheadpress': 'overhead-press',
+  'ohp': 'overhead-press',
+  '밀리터리프레스': 'overhead-press',
+  '밀프': 'overhead-press',
+  '덤벨숄더프레스': 'dumbbell-shoulder-press',
+  'dumbbellshoulderpress': 'dumbbell-shoulder-press',
+  '덤벨슈러그': 'dumbbell-shrug',
+  'dumbbellshrug': 'dumbbell-shrug',
+  '사이드레터럴레이즈': 'side-lateral-raise',
+  '사레레': 'side-lateral-raise',
+  'sidelateralraise': 'side-lateral-raise',
+  '페이스풀': 'face-pull',
+  'facepull': 'face-pull',
+
+  // Arms
+  '바벨컬': 'barbell-curl',
+  'barbellcurl': 'barbell-curl',
+  '덤벨컬': 'dumbbell-curl',
+  'dumbbellcurl': 'dumbbell-curl',
+  '오버헤드익스텐션': 'overhead-extension',
+  'overheadextension': 'overhead-extension',
+  '삼두익스텐션': 'overhead-extension',
+
+  // Core
+  '플랭크': 'plank',
+  'plank': 'plank',
+  '크런치': 'crunch',
+  'crunch': 'crunch',
+
+  // Cardio
+  '실내자전거': 'stationary-bike',
+  'stationarybike': 'stationary-bike',
+  '자전거': 'stationary-bike',
+  '사이클': 'stationary-bike',
+  '러닝': 'treadmill-running',
+  'treadmill': 'treadmill-running',
+  '트레드밀': 'treadmill-running',
+  '달리기': 'treadmill-running',
+  '조깅': 'outdoor-jogging',
+};
+
+/**
+ * Exercise DB Lookup function following strict order:
+ * 1. Normalize exercise name
+ * 2. Exercise Database Canonical Lookup
+ * 3. Alias Lookup
+ * 4. Fallback (returns null so caller uses deduceCategory)
+ */
+function matchExerciseFromDB(
+  exName: string,
+  existingExercises: Exercise[],
+  customExercises: Exercise[]
+): Exercise | null {
+  const normTarget = normalizeExerciseName(exName);
+  if (!normTarget) return null;
+
+  const pool = [...existingExercises, ...customExercises];
+
+  // 2. Exercise Database Canonical Lookup
+  let matched = pool.find(ex => {
+    const normName = normalizeExerciseName(ex.name);
+    const normCanonical = ex.canonicalName ? normalizeExerciseName(ex.canonicalName) : '';
+    const normId = normalizeExerciseName(ex.id);
+
+    const koreanPart = ex.name.includes('(') ? normalizeExerciseName(ex.name.split('(')[0]) : '';
+    const englishMatch = ex.name.match(/\(([^)]+)\)/);
+    const englishPart = englishMatch ? normalizeExerciseName(englishMatch[1]) : '';
+
+    return (
+      normTarget === normName ||
+      (normCanonical !== '' && normTarget === normCanonical) ||
+      normTarget === normId ||
+      (koreanPart !== '' && normTarget === koreanPart) ||
+      (englishPart !== '' && normTarget === englishPart)
+    );
+  });
+
+  if (matched) return matched;
+
+  // 3. Alias Lookup
+  const aliasTargetId = EXERCISE_ALIAS_MAP[normTarget];
+  if (aliasTargetId) {
+    matched = pool.find(
+      ex => ex.id === aliasTargetId || normalizeExerciseName(ex.id) === aliasTargetId
+    );
+    if (matched) return matched;
+  }
+
+  // 4. Fallback: null
+  return null;
+}
+
 // Deduce MuscleCategory from exercise name
 function deduceCategory(name: string): MuscleCategory {
   const n = name.toLowerCase();
@@ -165,6 +328,9 @@ function deduceCategory(name: string): MuscleCategory {
   }
   if (n.includes('페이스풀') || n.includes('페이스 풀') || n.includes('face pull') || n.includes('facepull')) {
     return 'Shoulders';
+  }
+  if (n.includes('랫풀다운') || n.includes('랫 풀 다운') || n.includes('랫풀') || n.includes('렛풀다운') || n.includes('렛 풀 다운') || n.includes('렛풀') || n.includes('lat pulldown') || n.includes('pulldown') || n.includes('풀다운')) {
+    return 'Back';
   }
 
   // 2. Class/Category-level rules
@@ -662,26 +828,11 @@ export async function parseV1Excel(
       for (const exName in recsByExercise) {
         const exRecs = recsByExercise[exName];
 
-        // Match with existing or previously mapped custom exercises
-        let matchedEx = existingExercises.find(ex => {
-          const nameClean = ex.name.toLowerCase();
-          const targetClean = exName.toLowerCase();
-          return (
-            nameClean === targetClean ||
-            nameClean.includes(`(${targetClean})`) ||
-            targetClean.includes(`(${nameClean})`) ||
-            nameClean.replace(/\s+/g, '') === targetClean.replace(/\s+/g, '')
-          );
-        });
+        // 1~3. Match exercise via SSOT Exercise DB Canonical & Alias lookup
+        let matchedEx = matchExerciseFromDB(exName, existingExercises, customExercises);
 
+        // 4. Fallback to deduceCategory() if not found in DB or Alias
         if (!matchedEx) {
-          matchedEx = customExercises.find(
-            ex => ex.name.toLowerCase() === exName.toLowerCase()
-          );
-        }
-
-        if (!matchedEx) {
-          // Create custom exercise
           const category = deduceCategory(exName);
           matchedEx = {
             id: `v1-custom-${exName.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${customExercises.length + 1}`,
@@ -690,9 +841,9 @@ export async function parseV1Excel(
             isCustom: true
           };
           customExercises.push(matchedEx);
-          debugLogs.push(`[Exercise Mapping] "${exName}" -> Created Custom Exercise (Category: ${category})`);
+          debugLogs.push(`[Exercise Mapping] "${exName}" -> Created Custom Exercise via Fallback (Category: ${category})`);
         } else {
-          debugLogs.push(`[Exercise Mapping] "${exName}" -> Mapped to existing exercise "${matchedEx.name}" (ID: ${matchedEx.id})`);
+          debugLogs.push(`[Exercise Mapping] "${exName}" -> Mapped to DB exercise "${matchedEx.name}" (ID: ${matchedEx.id})`);
         }
 
         // Generate SetRecords
@@ -737,7 +888,6 @@ export async function parseV1Excel(
           id: workoutLogId,
           date: d,
           startTime: '12:00',
-          duration: 60,
           notes: '구글 스프레드시트 버전 1에서 이관된 운동 일지 기록',
           exercises: exercisesInSession
         });
@@ -1017,3 +1167,158 @@ function createEmptyVerificationReport() {
     isConsistent: false
   };
 }
+
+export interface V1CustomRemapPatchResult {
+  patchedCount: number;
+  modifiedExerciseIds: string[];
+  modifiedCategories: string[];
+  updatedLogs: WorkoutLog[];
+  updatedRoutines: Routine[];
+  updatedExercises: Exercise[];
+}
+
+/**
+ * 1회성 Migration Patch:
+ * 이미 생성된 v1-custom 운동 중 Exercise Database에 대응되는 운동을 Canonical Exercise ID로 재매핑합니다.
+ * 
+ * 확인된 수정 대상:
+ * - 랫 풀 다운 / 렛 풀 다운 -> lat-pulldown (Category: Back)
+ * - 밴드 턱걸이 / 밴드 풀업 -> band-pull-up (Category: Back)
+ * - 덤벨 슈러그 -> dumbbell-shrug (Category: Shoulders)
+ * - 인클라인 덤벨 프레스 -> incline-dumbbell-press (Category: Chest)
+ * - 케이블 플라이 -> cable-fly (Category: Chest)
+ * - 오버헤드 익스텐션 -> overhead-extension (Category: Arms)
+ * - 카프레이즈 / 카프 레이즈 -> calf-raise-simple (Category: Legs)
+ */
+export function applyV1CustomExerciseRemappingPatch(
+  logs: WorkoutLog[] = [],
+  routines: Routine[] = [],
+  customExercises: Exercise[] = [],
+  dbExercises: Exercise[] = DEFAULT_EXERCISES
+): V1CustomRemapPatchResult {
+  const modifiedExerciseIdSet = new Set<string>();
+  const modifiedCategorySet = new Set<string>();
+  let patchedCount = 0;
+
+  // Specific canonical targets for one-time remediation
+  const TARGET_CANONICAL_MAP: Record<string, { id: string; name: string; category: MuscleCategory }> = {
+    '랫풀다운': { id: 'lat-pulldown', name: '랫 풀 다운 (Lat Pulldown)', category: 'Back' },
+    '렛풀다운': { id: 'lat-pulldown', name: '랫 풀 다운 (Lat Pulldown)', category: 'Back' },
+    '랫풀': { id: 'lat-pulldown', name: '랫 풀 다운 (Lat Pulldown)', category: 'Back' },
+    '렛풀': { id: 'lat-pulldown', name: '랫 풀 다운 (Lat Pulldown)', category: 'Back' },
+    '밴드턱걸이': { id: 'band-pull-up', name: '밴드 풀업 (Band Pull-Up)', category: 'Back' },
+    '밴드풀업': { id: 'band-pull-up', name: '밴드 풀업 (Band Pull-Up)', category: 'Back' },
+    '덤벨슈러그': { id: 'dumbbell-shrug', name: '덤벨 슈러그 (Dumbbell Shrug)', category: 'Shoulders' },
+    '인클라인덤벨프레스': { id: 'incline-dumbbell-press', name: '인클라인 덤벨 프레스 (Incline Dumbbell Press)', category: 'Chest' },
+    '케이블플라이': { id: 'cable-fly', name: '케이블 플라이', category: 'Chest' },
+    '오버헤드익스텐션': { id: 'overhead-extension', name: '오버헤드 익스텐션', category: 'Arms' },
+    '카프레이즈': { id: 'calf-raise-simple', name: '카프 레이즈', category: 'Legs' },
+  };
+
+  const resolveCanonical = (exName: string, exId: string): { id: string; name: string; category: MuscleCategory } | null => {
+    const norm = normalizeExerciseName(exName);
+    
+    // 1. Check specific target map
+    if (TARGET_CANONICAL_MAP[norm]) {
+      return TARGET_CANONICAL_MAP[norm];
+    }
+
+    // 2. Check general DB exercise match for v1-custom exercises
+    if (exId.startsWith('v1-custom-') || exId.includes('custom') || exName.includes('custom')) {
+      const match = matchExerciseFromDB(exName, dbExercises, []);
+      if (match) {
+        return { id: match.id, name: match.name, category: match.category };
+      }
+    }
+
+    return null;
+  };
+
+  const remappedMap = new Map<string, { id: string; name: string; category: MuscleCategory }>();
+
+  // Collect custom exercises that match Canonical DB exercises
+  for (const ex of customExercises) {
+    if (ex.isCustom || ex.id.startsWith('v1-custom-')) {
+      const canonical = resolveCanonical(ex.name, ex.id);
+      if (canonical) {
+        remappedMap.set(ex.id, canonical);
+        modifiedExerciseIdSet.add(canonical.id);
+        modifiedCategorySet.add(canonical.category);
+        patchedCount++;
+      }
+    }
+  }
+
+  // Remap Workout Logs
+  const updatedLogs = logs.map(log => {
+    let modified = false;
+    const updatedExercises = log.exercises.map(exSession => {
+      let canonical = remappedMap.get(exSession.exerciseId);
+      if (!canonical && (exSession.exerciseId.startsWith('v1-custom-') || exSession.exerciseId.includes('custom'))) {
+        canonical = resolveCanonical(exSession.exerciseName, exSession.exerciseId);
+        if (canonical) {
+          remappedMap.set(exSession.exerciseId, canonical);
+          modifiedExerciseIdSet.add(canonical.id);
+          modifiedCategorySet.add(canonical.category);
+          patchedCount++;
+        }
+      }
+
+      if (canonical && (exSession.exerciseId !== canonical.id || exSession.category !== canonical.category)) {
+        modified = true;
+        return {
+          ...exSession,
+          exerciseId: canonical.id,
+          exerciseName: canonical.name,
+          category: canonical.category
+        };
+      }
+      return exSession;
+    });
+
+    return modified ? { ...log, exercises: updatedExercises } : log;
+  });
+
+  // Remap Routines
+  const updatedRoutines = routines.map(routine => {
+    let modified = false;
+    const updatedExercises = routine.exercises.map(exItem => {
+      let canonical = remappedMap.get(exItem.exerciseId);
+      if (!canonical && (exItem.exerciseId.startsWith('v1-custom-') || exItem.exerciseId.includes('custom'))) {
+        canonical = resolveCanonical(exItem.exerciseName, exItem.exerciseId);
+        if (canonical) {
+          remappedMap.set(exItem.exerciseId, canonical);
+          modifiedExerciseIdSet.add(canonical.id);
+          modifiedCategorySet.add(canonical.category);
+          patchedCount++;
+        }
+      }
+
+      if (canonical && (exItem.exerciseId !== canonical.id || exItem.category !== canonical.category)) {
+        modified = true;
+        return {
+          ...exItem,
+          exerciseId: canonical.id,
+          exerciseName: canonical.name,
+          category: canonical.category
+        };
+      }
+      return exItem;
+    });
+
+    return modified ? { ...routine, exercises: updatedExercises } : routine;
+  });
+
+  // Filter out remapped custom exercises
+  const updatedExercises = customExercises.filter(ex => !remappedMap.has(ex.id));
+
+  return {
+    patchedCount,
+    modifiedExerciseIds: Array.from(modifiedExerciseIdSet),
+    modifiedCategories: Array.from(modifiedCategorySet),
+    updatedLogs,
+    updatedRoutines,
+    updatedExercises
+  };
+}
+

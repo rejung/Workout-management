@@ -45,7 +45,6 @@ export default function WorkoutForm({
     const now = new Date();
     return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   });
-  const [duration, setDuration] = useState<number>(60);
   const [selectedRoutineId, setSelectedRoutineId] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [activeExercises, setActiveExercises] = useState<ExerciseSession[]>([]);
@@ -60,7 +59,6 @@ export default function WorkoutForm({
     if (editingLog) {
       setDate(editingLog.date);
       setStartTime(editingLog.startTime || '12:00');
-      setDuration(editingLog.duration);
       setSelectedRoutineId(editingLog.routineId || '');
       setNotes(editingLog.notes);
       // deep copy
@@ -91,7 +89,6 @@ export default function WorkoutForm({
             id: generateUUID(),
             weight: prevSet.weight,
             reps: prevSet.reps,
-            rpe: prevSet.rpe,
             isWarmup: prevSet.isWarmup,
             timeSeconds: prevSet.timeSeconds,
             distanceKm: prevSet.distanceKm
@@ -105,7 +102,6 @@ export default function WorkoutForm({
             id: generateUUID(),
             weight: 0,
             reps: logType === 'TIME_BASED' ? 0 : 10,
-            rpe: 8,
             isWarmup: i === 0 && count > 3 ? true : false,
             timeSeconds: logType === 'TIME_BASED' ? 60 : logType === 'CARDIO' ? 0 : undefined,
             distanceKm: logType === 'CARDIO' ? 0 : undefined
@@ -166,7 +162,6 @@ export default function WorkoutForm({
           id: generateUUID(),
           weight: prevSet.weight,
           reps: prevSet.reps,
-          rpe: prevSet.rpe,
           isWarmup: prevSet.isWarmup,
           timeSeconds: prevSet.timeSeconds,
           distanceKm: prevSet.distanceKm
@@ -177,7 +172,6 @@ export default function WorkoutForm({
         id: generateUUID(),
         weight: 0,
         reps: exLogType === 'TIME_BASED' ? 0 : 10,
-        rpe: 8,
         isWarmup: false,
         timeSeconds: exLogType === 'TIME_BASED' ? 60 : exLogType === 'CARDIO' ? 0 : undefined,
         distanceKm: exLogType === 'CARDIO' ? 0 : undefined
@@ -208,13 +202,12 @@ export default function WorkoutForm({
 
     setActiveExercises(activeExercises.map(ae => {
       if (ae.exerciseId === exerciseId) {
-        // Pre-fill with the last set's weight/reps/rpe to make input easier!
+        // Pre-fill with the last set's weight/reps to make input easier!
         const lastSet = ae.sets[ae.sets.length - 1];
         const newSet: SetRecord = {
           id: generateUUID(),
           weight: lastSet ? lastSet.weight : 0,
           reps: lastSet ? lastSet.reps : (exLogType === 'TIME_BASED' ? 0 : 10),
-          rpe: lastSet ? lastSet.rpe : 8,
           isWarmup: false,
           timeSeconds: lastSet ? lastSet.timeSeconds : (exLogType === 'TIME_BASED' ? 60 : undefined),
           distanceKm: lastSet ? lastSet.distanceKm : undefined
@@ -272,7 +265,6 @@ export default function WorkoutForm({
       id: editingLog ? editingLog.id : generateUUID(),
       date,
       startTime,
-      duration: Number(duration) || 60,
       routineId: selectedRoutineId || undefined,
       routineName: selectedRoutineId ? routines.find(r => r.id === selectedRoutineId)?.name : undefined,
       notes,
@@ -319,27 +311,15 @@ export default function WorkoutForm({
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-zinc-700 flex items-center gap-1.5">
               <Clock className="w-4 h-4 text-zinc-400" />
-              시작 시간 / 소요 시간 (분)
+              시작 시간
             </label>
-            <div className="flex gap-2">
-              <input
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                required
-                className="w-1/2 bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:bg-white"
-              />
-              <input
-                type="number"
-                min="1"
-                max="300"
-                value={duration}
-                onChange={(e) => setDuration(Number(e.target.value))}
-                required
-                placeholder="분"
-                className="w-1/2 bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:bg-white"
-              />
-            </div>
+            <input
+              type="time"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              required
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:bg-white"
+            />
           </div>
 
           <div className="space-y-1.5">
@@ -449,24 +429,21 @@ export default function WorkoutForm({
                           </>
                         ) : logType === 'TIME_BASED' ? (
                           <>
-                            <span className="col-span-2">구분</span>
-                            <span className="col-span-5">수행 시간 (Duration)</span>
-                            <span className="col-span-3">피로도 (RPE)</span>
+                            <span className="col-span-3">구분</span>
+                            <span className="col-span-8">수행 시간 (Duration)</span>
                             <span className="col-span-1">제거</span>
                           </>
                         ) : logType === 'BODYWEIGHT_REPS' ? (
                           <>
-                            <span className="col-span-2">구분</span>
-                            <span className="col-span-5">반복 횟수 (Reps)</span>
-                            <span className="col-span-3">피로도 (RPE)</span>
+                            <span className="col-span-3">구분</span>
+                            <span className="col-span-8">반복 횟수 (Reps)</span>
                             <span className="col-span-1">제거</span>
                           </>
                         ) : (
                           <>
                             <span className="col-span-2">구분</span>
-                            <span className="col-span-3">중량 (kg)</span>
-                            <span className="col-span-3">반복 횟수 (Reps)</span>
-                            <span className="col-span-2">피로도 (RPE)</span>
+                            <span className="col-span-4">중량 (kg)</span>
+                            <span className="col-span-5">반복 횟수 (Reps)</span>
                             <span className="col-span-1">제거</span>
                           </>
                         )}
@@ -565,7 +542,7 @@ export default function WorkoutForm({
                                 </button>
 
                                 {/* Duration */}
-                                <div className="col-span-5 flex items-center bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 gap-1">
+                                <div className="col-span-8 flex items-center bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 gap-1">
                                   <input
                                     type="number"
                                     min="0"
@@ -594,19 +571,6 @@ export default function WorkoutForm({
                                   />
                                   <span className="text-[10px] text-zinc-400 font-medium">초</span>
                                 </div>
-
-                                {/* RPE Selector */}
-                                <select
-                                  value={set.rpe || 8}
-                                  onChange={(e) => handleUpdateSet(ae.exerciseId, set.id, 'rpe', Number(e.target.value))}
-                                  className="col-span-3 bg-zinc-50 border border-zinc-200 rounded-lg py-1.5 text-xs text-center font-semibold text-zinc-800 focus:outline-none cursor-pointer"
-                                >
-                                  <option value="10">10 (한계)</option>
-                                  <option value="9">9 (1회 더)</option>
-                                  <option value="8">8 (2회 더)</option>
-                                  <option value="7">7 (3회 더)</option>
-                                  <option value="6">6 (가벼움)</option>
-                                </select>
 
                                 {/* Delete Button */}
                                 <div className="col-span-1 flex justify-center">
@@ -645,7 +609,7 @@ export default function WorkoutForm({
                                 </button>
 
                                 {/* Reps */}
-                                <div className="col-span-5 flex items-center bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1">
+                                <div className="col-span-8 flex items-center bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1">
                                   <input
                                     type="number"
                                     min="0"
@@ -655,19 +619,6 @@ export default function WorkoutForm({
                                   />
                                   <span className="text-[10px] text-zinc-400 font-medium">회</span>
                                 </div>
-
-                                {/* RPE Selector */}
-                                <select
-                                  value={set.rpe || 8}
-                                  onChange={(e) => handleUpdateSet(ae.exerciseId, set.id, 'rpe', Number(e.target.value))}
-                                  className="col-span-3 bg-zinc-50 border border-zinc-200 rounded-lg py-1.5 text-xs text-center font-semibold text-zinc-800 focus:outline-none cursor-pointer"
-                                >
-                                  <option value="10">10 (한계)</option>
-                                  <option value="9">9 (1회 더)</option>
-                                  <option value="8">8 (2회 더)</option>
-                                  <option value="7">7 (3회 더)</option>
-                                  <option value="6">6 (가벼움)</option>
-                                </select>
 
                                 {/* Delete Button */}
                                 <div className="col-span-1 flex justify-center">
@@ -705,7 +656,7 @@ export default function WorkoutForm({
                               </button>
 
                               {/* Weight */}
-                              <div className="col-span-3 flex items-center bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1">
+                              <div className="col-span-4 flex items-center bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1">
                                 <input
                                   type="number"
                                   min="0"
@@ -718,7 +669,7 @@ export default function WorkoutForm({
                               </div>
 
                               {/* Reps */}
-                              <div className="col-span-3 flex items-center bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1">
+                              <div className="col-span-4 flex items-center bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1">
                                 <input
                                   type="number"
                                   min="0"
@@ -728,19 +679,6 @@ export default function WorkoutForm({
                                 />
                                 <span className="text-[10px] text-zinc-400 font-medium">회</span>
                               </div>
-
-                              {/* RPE Selector */}
-                              <select
-                                value={set.rpe || 8}
-                                onChange={(e) => handleUpdateSet(ae.exerciseId, set.id, 'rpe', Number(e.target.value))}
-                                className="col-span-2 bg-zinc-50 border border-zinc-200 rounded-lg py-1.5 text-xs text-center font-semibold text-zinc-800 focus:outline-none cursor-pointer"
-                              >
-                                <option value="10">10 (한계)</option>
-                                <option value="9">9 (1회 더)</option>
-                                <option value="8">8 (2회 더)</option>
-                                <option value="7">7 (3회 더)</option>
-                                <option value="6">6 (가벼움)</option>
-                              </select>
 
                               {/* Delete Button */}
                               <div className="col-span-1 flex justify-center">
