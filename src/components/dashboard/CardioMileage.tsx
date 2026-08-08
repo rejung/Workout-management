@@ -146,6 +146,11 @@ export function RecommendedWorkoutCard({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">🏋️ 오늘의 추천</span>
+            {recommendation.pendingRecommendation && recommendation.pendingRecommendation.overdueDays > 0 && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                ⏳ {recommendation.pendingRecommendation.overdueDays}일 이월
+              </span>
+            )}
           </div>
           {isRest && isRestCompleted && (
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/15 text-emerald-400 border border-emerald-500/35 tracking-wider uppercase">
@@ -170,7 +175,7 @@ export function RecommendedWorkoutCard({
         {/* ④ 실행 정보 (다음 운동, 추천 시점) */}
         <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs py-1">
           <div className="flex flex-col justify-center">
-            <span className="text-slate-500 font-bold text-[9px] uppercase tracking-wider">다음 운동</span>
+            <span className="text-slate-500 font-bold text-[9px] uppercase tracking-wider">예상 다음 세션</span>
             <span className="font-extrabold text-slate-100 text-sm sm:text-base leading-tight mt-0.5">{nextUp}</span>
           </div>
           <div className="flex flex-col justify-center">

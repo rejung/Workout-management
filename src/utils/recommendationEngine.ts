@@ -7,11 +7,24 @@ import { WorkoutLog } from '../types';
 import { GoalSettings } from '../types/goal';
 import { getLocalDateString } from './dateUtils';
 import { getLast7DaysRange, getLast28DaysRange } from './dateRange';
+import { buildTrainingState, LIFT_TO_CATEGORY, getMainLiftOfLog } from '../domain/recommendation/trainingState';
+import { evaluateSessionInterference } from '../domain/recommendation/sessionInterference';
+import { PendingRecommendation } from '../domain/recommendation/types';
+import {
+  resolvePendingRecommendation,
+  createPendingRecommendation,
+  getStoredPendingRecommendation,
+  savePendingRecommendation,
+  isFourMainLift,
+} from '../domain/recommendation/pendingRecommendation';
+export { LIFT_TO_CATEGORY, getMainLiftOfLog };
+export type { TrainingState, PendingRecommendation } from '../domain/recommendation/types';
 
 export type MainLift = '벤치프레스' | 'OHP' | '데드리프트' | '바벨 로우' | '스쿼트' | '러닝' | '휴식';
 
 export interface RecommendationResult {
   mainLift: MainLift;
+  pendingRecommendation?: PendingRecommendation | null;
   reasons: string[];
   representativeExercises: string[];
   date: string;
@@ -41,6 +54,9 @@ export interface LiftFactorScores {
   goalGap: number;     // max 15 (③ 목표 지표 대비 현재 퍼포먼스 간극)
   frequency: number;   // max 15 (④ 최근 4주간 종목/카테고리 빈도 균형)
   fatigue: number;     // max 10 (⑤ 누적 피로도 및 종목 간 간섭 적합도)
+  interferencePenalty?: number;
+  isHardBlocked?: boolean;
+  hardBlockReason?: string;
   total: number;       // sum of factor scores (max 100)
   reasons?: string[];  // detailed explanations for factor scoring
 }
@@ -51,16 +67,6 @@ export const RECOMMENDATION_WEIGHTS = {
   goalGap: 0.15,
   frequency: 0.15,
   fatigue: 0.10,
-};
-
-export const LIFT_TO_CATEGORY: Record<MainLift, 'Push' | 'Pull' | 'Legs' | 'Cardio' | 'Rest'> = {
-  '벤치프레스': 'Push',
-  'OHP': 'Push',
-  '데드리프트': 'Pull',
-  '바벨 로우': 'Pull',
-  '스쿼트': 'Legs',
-  '러닝': 'Cardio',
-  '휴식': 'Rest',
 };
 
 export const REP_EXERCISES_MAP: Record<MainLift, string[]> = {
@@ -122,31 +128,6 @@ export const ACTION_CHECKLIST_MAP: Record<MainLift, string[]> = {
     '수분 및 단백질 충분히 섭취'
   ]
 };
-
-/**
- * Helper to identify the main lift of a workout log based on exercises and routine metadata
- */
-export function getMainLiftOfLog(log: WorkoutLog): MainLift | null {
-  const routineId = log.routineId || '';
-  const rName = (log.routineName || '').toLowerCase();
-  if (routineId === 'routine-bench-press' || rName.includes('bench') || rName.includes('벤치프레스')) return '벤치프레스';
-  if (routineId === 'routine-ohp' || rName.includes('ohp') || rName.includes('오버헤드 프레스')) return 'OHP';
-  if (routineId === 'routine-deadlift' || rName.includes('dead') || rName.includes('데드리프트')) return '데드리프트';
-  if (routineId === 'routine-barbell-row' || rName.includes('barbell row') || rName.includes('바벨 로우') || rName.includes('바벨로우')) return '바벨 로우';
-  if (routineId === 'routine-squat' || rName.includes('squat') || rName.includes('스쿼트')) return '스쿼트';
-  if (routineId === 'routine-cardio' || rName.includes('run') || rName.includes('러닝') || rName.includes('유산소') || rName.includes('cardio') || rName.includes('트레드밀')) return '러닝';
-
-  for (const ex of log.exercises) {
-    const eName = ex.exerciseName.toLowerCase();
-    if (eName.includes('bench') || eName.includes('벤치프레스')) return '벤치프레스';
-    if (eName.includes('ohp') || eName.includes('오버헤드프레스') || eName.includes('오버헤드 프레스') || eName.includes('overhead press')) return 'OHP';
-    if (eName.includes('dead') || eName.includes('데드리프트')) return '데드리프트';
-    if (eName.includes('barbell row') || eName.includes('바벨 로우') || eName.includes('바벨로우')) return '바벨 로우';
-    if (eName.includes('squat') || eName.includes('스쿼트')) return '스쿼트';
-    if (ex.category === 'Cardio' || eName.includes('run') || eName.includes('러닝') || eName.includes('달리기') || eName.includes('treadmill') || eName.includes('트레드밀')) return '러닝';
-  }
-  return null;
-}
 
 function getFriendlyRecommendationDate(dateStr: string): string {
   try {
@@ -252,71 +233,30 @@ function getExecutionInfo(lift: MainLift, nextLift: MainLift, lastWorkoutDate?: 
  */
 export function calculateMultiFactorScores(
   logs: WorkoutLog[],
-  goalSettings?: GoalSettings | null
+  goalSettings?: GoalSettings | null,
+  pendingRec?: PendingRecommendation | null,
+  customTodayStr?: string
 ): Record<MainLift, LiftFactorScores> {
   const allLifts: MainLift[] = ['스쿼트', '벤치프레스', '데드리프트', 'OHP', '러닝', '휴식', '바벨 로우'];
-  const todayStr = getLocalDateString();
-  const sorted = [...logs].sort((a, b) => b.date.localeCompare(a.date));
-  const hasWorkedOutToday = sorted.some(l => l.date === todayStr);
+  const todayStr = customTodayStr || getLocalDateString();
+  const trainingState = buildTrainingState(logs, todayStr);
+  const sorted = trainingState.sortedLogs;
 
-  // 1. Calculate days since last performed for each lift
-  const daysSinceLastMap: Record<MainLift, number> = {
-    '벤치프레스': 30,
-    'OHP': 30,
-    '데드리프트': 30,
-    '바벨 로우': 30,
-    '스쿼트': 30,
-    '러닝': 30,
-    '휴식': 30,
-  };
+  const rawPending = pendingRec !== undefined ? pendingRec : getStoredPendingRecommendation();
+  const resolvedPending = resolvePendingRecommendation(rawPending, logs, todayStr);
 
-  allLifts.forEach(lift => {
-    if (lift !== '휴식') {
-      const log = sorted.find(l => getMainLiftOfLog(l) === lift);
-      if (log) {
-        const diffDays = Math.max(0, Math.floor((new Date(todayStr).getTime() - new Date(log.date).getTime()) / (1000 * 60 * 60 * 24)));
-        daysSinceLastMap[lift] = diffDays;
-      }
-    }
-  });
+  // 1. Training State SSOT
+  const hasWorkedOutToday = trainingState.hasWorkedOutToday;
+  const daysSinceLastMap = trainingState.daysSinceLastMap;
+  const consecutiveTrainingDays = trainingState.trainingStreak.consecutiveDays;
+  const last7DaysCount = trainingState.trainingStreak.countLast7Days;
+  const last28DaysCount = trainingState.trainingStreak.countLast28Days;
 
-  // Calculate days since last rest day & consecutive training days
-  let consecutiveTrainingDays = 0;
-  const checkDate = new Date(todayStr);
-  if (!hasWorkedOutToday) {
-    checkDate.setDate(checkDate.getDate() - 1);
-  }
-  while (true) {
-    const dStr = checkDate.toISOString().slice(0, 10);
-    const trained = sorted.some(l => l.date === dStr);
-    if (trained) {
-      consecutiveTrainingDays++;
-      checkDate.setDate(checkDate.getDate() - 1);
-    } else {
-      break;
-    }
-  }
-  daysSinceLastMap['휴식'] = consecutiveTrainingDays;
-
-  // 2. Weekly & 4-Week Frequency analysis
-  const { startDateStr: sevenDaysAgoStr } = getLast7DaysRange(todayStr);
-  const last7DaysLogs = sorted.filter(l => l.date >= sevenDaysAgoStr && l.date <= todayStr);
-  const last7DaysCount = last7DaysLogs.length;
-
-  const { startDateStr: fourWeeksAgoStr } = getLast28DaysRange(todayStr);
-  const last28DaysLogs = sorted.filter(l => l.date >= fourWeeksAgoStr && l.date <= todayStr);
-
-  let pushCount = 0, pullCount = 0, legCount = 0, cardioCount = 0;
-  last28DaysLogs.forEach(l => {
-    const ml = getMainLiftOfLog(l);
-    if (ml) {
-      const cat = LIFT_TO_CATEGORY[ml];
-      if (cat === 'Push') pushCount++;
-      if (cat === 'Pull') pullCount++;
-      if (cat === 'Legs') legCount++;
-      if (cat === 'Cardio') cardioCount++;
-    }
-  });
+  // 2. Weekly & 4-Week Frequency analysis from Training State
+  const pushCount = trainingState.categoryCounts28Days.Push;
+  const pullCount = trainingState.categoryCounts28Days.Pull;
+  const legCount = trainingState.categoryCounts28Days.Legs;
+  const cardioCount = trainingState.categoryCounts28Days.Cardio;
   const maxCatCount = Math.max(pushCount, pullCount, legCount, cardioCount, 1);
 
   // 3. Goal gap analysis (find max lifted weights)
@@ -422,19 +362,46 @@ export function calculateMultiFactorScores(
 
     // ④ Frequency Balance Score (max 15)
     let freqScore = 0;
+    let imbalancePenalty = 0;
+    const cat = LIFT_TO_CATEGORY[lift];
     if (lift === '휴식') {
-      if (last28DaysLogs.length >= 16) freqScore = 15;
-      else if (last28DaysLogs.length >= 12) freqScore = 11;
+      if (last28DaysCount >= 16) freqScore = 15;
+      else if (last28DaysCount >= 12) freqScore = 11;
       else freqScore = 6;
     } else {
-      const cat = LIFT_TO_CATEGORY[lift];
-      const count = cat === 'Push' ? pushCount : (cat === 'Pull' ? pullCount : (cat === 'Legs' ? legCount : cardioCount));
-      const deficit = maxCatCount - count;
-      if (deficit > 0) {
-        freqScore = 5 + Math.min(10, Math.round((deficit / maxCatCount) * 10));
+      if (cat === 'Cardio') {
+        freqScore = cardioCount < 4 ? 12 : 6;
       } else {
-        freqScore = 6;
+        const catCount = cat === 'Push' ? pushCount : (cat === 'Pull' ? pullCount : legCount);
+        const total3Cat = pushCount + pullCount + legCount;
+        const avg3Cat = total3Cat > 0 ? total3Cat / 3 : 0;
+        const catDelta = catCount - avg3Cat;
+
+        if (catDelta <= -1.0) {
+          // Under-represented category boost
+          freqScore = Math.min(15, 10 + Math.round(Math.abs(catDelta) * 3));
+        } else if (catDelta <= 0.75) {
+          // Balanced category
+          freqScore = 9;
+        } else {
+          // Over-represented category penalty
+          freqScore = 0;
+          imbalancePenalty = Math.min(15, Math.round(catDelta * 8));
+        }
       }
+    }
+
+    // 4-Lift Rotation Alignment & Cycle Completer Bonus (only if category is not saturated)
+    let rotationBonus = 0;
+    const isCycleCompleter = isFourMainLift(lift) && trainingState.rotationState.cycleCompleter === lift;
+    const isOldestFourLift = isFourMainLift(lift) && trainingState.rotationState.oldestLift === lift;
+    const catCount = cat === 'Push' ? pushCount : (cat === 'Pull' ? pullCount : legCount);
+    const total3Cat = pushCount + pullCount + legCount;
+    const avg3Cat = total3Cat > 0 ? total3Cat / 3 : 0;
+    const isCategorySaturated = (catCount - avg3Cat) >= 1.0;
+
+    if ((isCycleCompleter || isOldestFourLift) && recScore >= 30 && !isCategorySaturated) {
+      rotationBonus = 8;
     }
 
     // ⑤ Fatigue Index Score (max 10) - suitability given fatigue
@@ -455,9 +422,20 @@ export function calculateMultiFactorScores(
       fatScore = daysSinceLastMap[lift] <= 1 ? 2 : 10;
     }
 
-    let totalScore = recScore + priScore + goalScore + freqScore + fatScore;
-    if (lift === '휴식' && hasWorkedOutToday) {
-      totalScore += 50; // Guarantee rest if already trained today
+    let totalScore = recScore + priScore + goalScore + freqScore + fatScore + rotationBonus - imbalancePenalty;
+
+    // Apply Session Interference Layer
+    const interference = evaluateSessionInterference(lift, trainingState);
+    totalScore -= interference.penalty;
+
+    if (interference.isHardBlocked) {
+      totalScore = 0;
+    } else if (resolvedPending && resolvedPending.lift === lift && resolvedPending.status === 'pending') {
+      // Pending Priority Boost applies ONLY if recovered and low interference
+      if (recScore >= 22 && interference.penalty < 15) {
+        const pendingBoost = 12 + Math.min(8, (resolvedPending.overdueDays || 0) * 3);
+        totalScore += pendingBoost;
+      }
     }
 
     scores[lift] = {
@@ -466,7 +444,10 @@ export function calculateMultiFactorScores(
       goalGap: goalScore,
       frequency: freqScore,
       fatigue: fatScore,
-      total: totalScore,
+      interferencePenalty: interference.penalty,
+      isHardBlocked: interference.isHardBlocked,
+      hardBlockReason: interference.hardBlockReason,
+      total: Math.max(0, totalScore),
       reasons: [],
     };
   });
@@ -475,6 +456,14 @@ export function calculateMultiFactorScores(
 }
 
 export function getRejectionReason(lift: MainLift, score: LiftFactorScores): string {
+  if (score.isHardBlocked && score.hardBlockReason) {
+    return score.hardBlockReason;
+  }
+
+  if (score.interferencePenalty && score.interferencePenalty >= 7) {
+    return '최근 세션 수행으로 인한 높은 간섭(피로 누적)이 발생하여 보류 권장됩니다.';
+  }
+
   if (lift === '휴식') {
     if (score.recovery < 35) {
       return '최근 휴식이 충분하고 누적 피로도가 낮아, 오늘은 성장을 위해 훈련을 소화할 적기입니다.';
@@ -518,16 +507,65 @@ export function getRejectionReason(lift: MainLift, score: LiftFactorScores): str
   return '신체 회복 속도와 루틴별 우선순위 밸런스를 고려할 때 다른 종목이 오늘 수행 효율이 더 높습니다.';
 }
 
+export function getProjectedNextSession(
+  todayLift: MainLift,
+  logs: WorkoutLog[],
+  goalSettings?: GoalSettings | null,
+  todayStr?: string
+): MainLift {
+  if (todayLift === '휴식') {
+    return '스쿼트';
+  }
+
+  const currentTodayStr = todayStr || getLocalDateString();
+  const simLog: WorkoutLog = {
+    id: 'simulated-today',
+    date: currentTodayStr,
+    routineName: todayLift,
+    notes: 'Simulated log for projected next workout',
+    exercises: [
+      {
+        exerciseId: 'sim-1',
+        exerciseName: todayLift,
+        category: LIFT_TO_CATEGORY[todayLift] === 'Push' ? 'Chest' : (LIFT_TO_CATEGORY[todayLift] === 'Pull' ? 'Back' : (LIFT_TO_CATEGORY[todayLift] === 'Legs' ? 'Legs' : 'Cardio')),
+        sets: [{ id: 'sim-s1', reps: 5, weight: 100 }],
+      },
+    ],
+  };
+
+  const simLogs = [simLog, ...logs];
+  
+  const parts = currentTodayStr.split('-').map(Number);
+  const tomorrowObj = new Date(parts[0], parts[1] - 1, parts[2] + 1);
+  const mm = String(tomorrowObj.getMonth() + 1).padStart(2, '0');
+  const dd = String(tomorrowObj.getDate()).padStart(2, '0');
+  const tomorrowStr = `${tomorrowObj.getFullYear()}-${mm}-${dd}`;
+
+  const scores = calculateMultiFactorScores(simLogs, goalSettings, null, tomorrowStr);
+  const allowedLifts: MainLift[] = ['스쿼트', '벤치프레스', '데드리프트', 'OHP', '휴식'];
+  const candidates = allowedLifts
+    .map(lift => ({ lift, score: scores[lift]?.total || 0 }))
+    .sort((a, b) => b.score - a.score);
+
+  const bestNext = candidates.find(c => c.lift !== todayLift && c.lift !== '휴식')?.lift || candidates[0].lift;
+  return bestNext;
+}
+
 export function getNextRecommendation(
   logs: WorkoutLog[],
-  goalSettings?: GoalSettings | null
+  goalSettings?: GoalSettings | null,
+  existingPending?: PendingRecommendation | null,
+  customTodayStr?: string
 ): RecommendationResult {
-  const todayStr = getLocalDateString();
+  const todayStr = customTodayStr || getLocalDateString();
   const recDateStr = todayStr.replace(/-/g, '. ');
+
+  const rawPending = existingPending !== undefined ? existingPending : getStoredPendingRecommendation();
+  const resolvedPending = resolvePendingRecommendation(rawPending, logs, todayStr);
 
   if (logs.length === 0) {
     const mainLift: MainLift = '벤치프레스';
-    const multiFactorScores = calculateMultiFactorScores(logs, goalSettings);
+    const multiFactorScores = calculateMultiFactorScores(logs, goalSettings, resolvedPending, todayStr);
     const allowedLifts: MainLift[] = ['스쿼트', '벤치프레스', '데드리프트', 'OHP', '휴식'];
     const filteredScores = {} as Record<MainLift, LiftFactorScores>;
     allowedLifts.forEach(lift => {
@@ -545,8 +583,19 @@ export function getNextRecommendation(
       rejectionReason: getRejectionReason(item.lift, item),
     }));
 
+    let activePending = resolvedPending;
+    if (isFourMainLift(mainLift)) {
+      if (!activePending || activePending.lift !== mainLift) {
+        activePending = createPendingRecommendation(mainLift, todayStr, todayStr);
+      }
+    }
+    savePendingRecommendation(activePending);
+
+    const projectedNextLift = getProjectedNextSession(mainLift, logs, goalSettings, todayStr);
+
     return {
       mainLift,
+      pendingRecommendation: activePending,
       reasons: [
         '✓ 신규 훈련 시작을 위한 대표 상체 밀기 종목입니다.',
         '✓ 근육 및 관절 회복도가 100%인 상태입니다.',
@@ -556,14 +605,14 @@ export function getNextRecommendation(
       date: recDateStr,
       friendlyDate: getFriendlyRecommendationDate(todayStr),
       actionChecklist: ACTION_CHECKLIST_MAP[mainLift],
-      executionInfo: getExecutionInfo(mainLift, '스쿼트', todayStr),
+      executionInfo: getExecutionInfo(mainLift, projectedNextLift, todayStr),
       oneLineReason: getOneLineReason(mainLift),
       allScores: filteredScores,
       topCandidates
     };
   }
 
-  const multiFactorScores = calculateMultiFactorScores(logs, goalSettings);
+  const multiFactorScores = calculateMultiFactorScores(logs, goalSettings, resolvedPending, todayStr);
   const allowedLifts: MainLift[] = ['스쿼트', '벤치프레스', '데드리프트', 'OHP', '휴식'];
   const filteredScores = {} as Record<MainLift, LiftFactorScores>;
   allowedLifts.forEach(lift => {
@@ -575,13 +624,29 @@ export function getNextRecommendation(
     .sort((a, b) => b.total - a.total);
 
   const best = sortedCandidates[0];
-  const secondBestLift = sortedCandidates.find(c => c.lift !== best.lift && c.lift !== '휴식')?.lift || '스쿼트';
   const mainLift = best.lift;
+  const projectedNextLift = getProjectedNextSession(mainLift, logs, goalSettings, todayStr);
+
+  let activePending = resolvedPending;
+  if (isFourMainLift(mainLift)) {
+    if (!activePending || activePending.lift !== mainLift) {
+      activePending = createPendingRecommendation(mainLift, todayStr, todayStr);
+    }
+  } else if (mainLift === '휴식') {
+    // Keep existing pending recommendation when rest is chosen today due to fatigue/recovery
+  } else {
+    activePending = null;
+  }
+  savePendingRecommendation(activePending);
 
   // Generate explainable reasons (Why)
   const candidateReasons: string[] = [];
   const sortedLogs = [...logs].sort((a, b) => b.date.localeCompare(a.date));
   const hasWorkedOutToday = sortedLogs.some(l => l.date === todayStr);
+
+  if (activePending && activePending.lift === mainLift && activePending.overdueDays > 0) {
+    candidateReasons.push(`이전에 추천되었지만 아직 수행되지 않아 오늘 우선적으로 고려했습니다. (${activePending.overdueDays}일 이월)`);
+  }
 
   if (mainLift === '휴식') {
     if (hasWorkedOutToday) {
@@ -611,7 +676,7 @@ export function getNextRecommendation(
 
     // 2. Priority reason
     if (best.priority >= 17) {
-      candidateReasons.push('최근 4일 이상 수행하지 않아 훈련 우선순위가 크게 상승했습니다.');
+      candidateReasons.push('최근 훈련 주기를 고려할 때 금일 훈련 우선순위가 높습니다.');
     } else if (best.priority >= 14) {
       candidateReasons.push('주기적 프로그램 흐름상 금일 배치하기에 가장 적합한 종목입니다.');
     }
@@ -657,12 +722,13 @@ export function getNextRecommendation(
 
   return {
     mainLift,
+    pendingRecommendation: activePending,
     reasons: uniqueReasons,
     representativeExercises: REP_EXERCISES_MAP[mainLift],
     date: recDateStr,
     friendlyDate: getFriendlyRecommendationDate(todayStr),
     actionChecklist: ACTION_CHECKLIST_MAP[mainLift],
-    executionInfo: getExecutionInfo(mainLift, secondBestLift, lastWorkoutDate),
+    executionInfo: getExecutionInfo(mainLift, projectedNextLift, lastWorkoutDate),
     oneLineReason: getOneLineReason(mainLift),
     allScores: filteredScores,
     topCandidates
