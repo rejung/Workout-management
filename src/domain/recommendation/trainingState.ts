@@ -54,6 +54,30 @@ export function getMainLiftOfLog(log: WorkoutLog): MainLift | null {
 }
 
 /**
+ * Compares two WorkoutLogs in descending chronological order (newest first).
+ * Primary sort key: date (YYYY-MM-DD)
+ * Secondary sort key: startTime (HH:MM)
+ *
+ * When date and startTime are identical or omitted, returns 0 to maintain stable array order
+ * without inventing unverified chronological order from arbitrary UUIDs.
+ */
+export function compareWorkoutLogsChronologicalDesc(a: WorkoutLog, b: WorkoutLog): number {
+  const dateDiff = b.date.localeCompare(a.date);
+  if (dateDiff !== 0) {
+    return dateDiff;
+  }
+
+  const timeA = a.startTime || '';
+  const timeB = b.startTime || '';
+  const timeDiff = timeB.localeCompare(timeA);
+  if (timeDiff !== 0) {
+    return timeDiff;
+  }
+
+  return 0;
+}
+
+/**
  * Pure function to construct TrainingState as SSOT from WorkoutLog[]
  */
 export function buildTrainingState(
@@ -61,7 +85,7 @@ export function buildTrainingState(
   baseDateStr?: string
 ): TrainingState {
   const todayStr = baseDateStr || getLocalDateString();
-  const sortedLogs = [...logs].sort((a, b) => b.date.localeCompare(a.date));
+  const sortedLogs = [...logs].sort(compareWorkoutLogsChronologicalDesc);
 
   const hasWorkedOutToday = sortedLogs.some(l => l.date === todayStr);
 

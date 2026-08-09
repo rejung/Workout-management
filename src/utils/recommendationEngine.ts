@@ -7,7 +7,7 @@ import { WorkoutLog } from '../types';
 import { GoalSettings } from '../types/goal';
 import { getLocalDateString } from './dateUtils';
 import { getLast7DaysRange, getLast28DaysRange } from './dateRange';
-import { buildTrainingState, LIFT_TO_CATEGORY, getMainLiftOfLog } from '../domain/recommendation/trainingState';
+import { buildTrainingState, LIFT_TO_CATEGORY, getMainLiftOfLog, compareWorkoutLogsChronologicalDesc } from '../domain/recommendation/trainingState';
 import { evaluateSessionInterference } from '../domain/recommendation/sessionInterference';
 import { PendingRecommendation } from '../domain/recommendation/types';
 import {
@@ -513,28 +513,27 @@ export function getProjectedNextSession(
   goalSettings?: GoalSettings | null,
   todayStr?: string
 ): MainLift {
-  if (todayLift === '휴식') {
-    return '스쿼트';
+  const currentTodayStr = todayStr || getLocalDateString();
+
+  let simLogs = logs;
+  if (todayLift !== '휴식') {
+    const simLog: WorkoutLog = {
+      id: 'simulated-today',
+      date: currentTodayStr,
+      routineName: todayLift,
+      notes: 'Simulated log for projected next workout',
+      exercises: [
+        {
+          exerciseId: 'sim-1',
+          exerciseName: todayLift,
+          category: LIFT_TO_CATEGORY[todayLift] === 'Push' ? 'Chest' : (LIFT_TO_CATEGORY[todayLift] === 'Pull' ? 'Back' : (LIFT_TO_CATEGORY[todayLift] === 'Legs' ? 'Legs' : 'Cardio')),
+          sets: [{ id: 'sim-s1', reps: 5, weight: 100 }],
+        },
+      ],
+    };
+    simLogs = [simLog, ...logs];
   }
 
-  const currentTodayStr = todayStr || getLocalDateString();
-  const simLog: WorkoutLog = {
-    id: 'simulated-today',
-    date: currentTodayStr,
-    routineName: todayLift,
-    notes: 'Simulated log for projected next workout',
-    exercises: [
-      {
-        exerciseId: 'sim-1',
-        exerciseName: todayLift,
-        category: LIFT_TO_CATEGORY[todayLift] === 'Push' ? 'Chest' : (LIFT_TO_CATEGORY[todayLift] === 'Pull' ? 'Back' : (LIFT_TO_CATEGORY[todayLift] === 'Legs' ? 'Legs' : 'Cardio')),
-        sets: [{ id: 'sim-s1', reps: 5, weight: 100 }],
-      },
-    ],
-  };
-
-  const simLogs = [simLog, ...logs];
-  
   const parts = currentTodayStr.split('-').map(Number);
   const tomorrowObj = new Date(parts[0], parts[1] - 1, parts[2] + 1);
   const mm = String(tomorrowObj.getMonth() + 1).padStart(2, '0');
@@ -641,7 +640,7 @@ export function getNextRecommendation(
 
   // Generate explainable reasons (Why)
   const candidateReasons: string[] = [];
-  const sortedLogs = [...logs].sort((a, b) => b.date.localeCompare(a.date));
+  const sortedLogs = [...logs].sort(compareWorkoutLogsChronologicalDesc);
   const hasWorkedOutToday = sortedLogs.some(l => l.date === todayStr);
 
   if (activePending && activePending.lift === mainLift && activePending.overdueDays > 0) {

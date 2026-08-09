@@ -338,7 +338,8 @@ export default function AnalyticsDashboard({
                     }
 
                     const { startDateStr: sevenDaysAgoStr, endDateStr: todayStr } = getLast7DaysRange();
-                    const recent7DaysCount = logs.filter(log => log.date >= sevenDaysAgoStr && log.date <= todayStr).length;
+                    const recent7DaysLogs = logs.filter(log => log.date >= sevenDaysAgoStr && log.date <= todayStr);
+                    const recent7DaysUniqueDays = new Set(recent7DaysLogs.map(log => log.date)).size;
 
                     return (
                       <div className="grid grid-cols-2 gap-3 bg-slate-950/40 p-3 rounded-xl border border-slate-850/60">
@@ -351,7 +352,7 @@ export default function AnalyticsDashboard({
                         <div className="space-y-0.5">
                           <span className="text-[10px] font-bold text-slate-500 block">최근 7일 빈도</span>
                           <span className="text-xs font-mono font-black text-slate-200">
-                            {recent7DaysCount}회 수행
+                            {recent7DaysUniqueDays}일 수행
                           </span>
                         </div>
                       </div>
@@ -361,16 +362,17 @@ export default function AnalyticsDashboard({
                   {/* (3) 이번 주 완료율 */}
                   {(() => {
                     const { startDateStr: mondayStr, endDateStr: sundayStr } = getCurrentWeekRange();
-                    const completedThisWeek = logs.filter(log => log.date >= mondayStr && log.date <= sundayStr).length;
+                    const thisWeekLogs = logs.filter(log => log.date >= mondayStr && log.date <= sundayStr);
+                    const uniqueWorkoutDays = new Set(thisWeekLogs.map(log => log.date)).size;
                     const targetWeeklyWorkouts = 4;
-                    const progressPct = Math.min((completedThisWeek / targetWeeklyWorkouts) * 100, 100);
+                    const progressPct = Math.min((uniqueWorkoutDays / targetWeeklyWorkouts) * 100, 100);
 
                     return (
                       <div className="space-y-2">
                         <div className="flex justify-between items-center">
                           <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">이번 주 완료율</h3>
                           <span className="text-[11px] font-mono font-bold text-indigo-400">
-                            {completedThisWeek} / {targetWeeklyWorkouts}회 완료
+                            {uniqueWorkoutDays} / {targetWeeklyWorkouts}일 완료
                           </span>
                         </div>
                         <div className="h-2 w-full bg-slate-950 rounded-full overflow-hidden border border-slate-800/40">
