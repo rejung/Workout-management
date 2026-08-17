@@ -54,6 +54,7 @@ export interface LiftFactorScores {
   goalGap: number;     // max 15 (③ 목표 지표 대비 현재 퍼포먼스 간극)
   frequency: number;   // max 15 (④ 최근 4주간 종목/카테고리 빈도 균형)
   fatigue: number;     // max 10 (⑤ 누적 피로도 및 종목 간 간섭 적합도)
+  rotationBonus?: number; // 4대 종목 순환 가산 보너스 (+8)
   interferencePenalty?: number;
   isHardBlocked?: boolean;
   hardBlockReason?: string;
@@ -203,19 +204,50 @@ export function formatNextRecommendationDate(
   return daysOfWeek[targetDate.getDay()];
 }
 
-function getExecutionInfo(lift: MainLift, nextLift: MainLift, lastWorkoutDate?: string) {
-  let recoveryDays = 2;
-  if (lift === '휴식') {
-    recoveryDays = 1;
-  } else if (lift === '러닝') {
-    recoveryDays = 2;
-  } else if (lift === '스쿼트' || lift === '데드리프트') {
-    recoveryDays = 2;
-  } else {
-    recoveryDays = 2;
-  }
+export interface ProjectedSessionResult {
+  lift: MainLift;
+  projectedDays: number;
+  projectedDate: string;
+}
 
-  const nextTiming = formatNextRecommendationDate(lastWorkoutDate, recoveryDays);
+function getExecutionInfo(
+  lift: MainLift,
+  nextLiftInput: MainLift | ProjectedSessionResult,
+  lastWorkoutDate?: string,
+  todayStr?: string
+) {
+  let recoveryDays = 2;
+  let nextLift: MainLift;
+  let nextTiming = '내일';
+
+  const allowedLifts: MainLift[] = ['벤치프레스', 'OHP', '데드리프트', '스쿼트'];
+  if (typeof nextLiftInput === 'object' && nextLiftInput !== null) {
+    nextLift = nextLiftInput.lift;
+    recoveryDays = nextLiftInput.projectedDays;
+    const currentTodayStr = todayStr || getLocalDateString();
+    
+    const tParts = currentTodayStr.split('-').map(Number);
+    const pParts = nextLiftInput.projectedDate.split('-').map(Number);
+    const tObj = new Date(tParts[0], tParts[1] - 1, tParts[2]);
+    const pObj = new Date(pParts[0], pParts[1] - 1, pParts[2]);
+    const diffMs = pObj.getTime() - tObj.getTime();
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays <= 0) {
+      nextTiming = '오늘';
+    } else if (diffDays === 1) {
+      nextTiming = '내일';
+    } else {
+      const daysOfWeek = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
+      nextTiming = daysOfWeek[pObj.getDay()];
+    }
+  } else {
+    nextLift = typeof nextLiftInput === 'string'
+      ? nextLiftInput
+      : (typeof nextLiftInput === 'object' && nextLiftInput && 'lift' in nextLiftInput ? (nextLiftInput as ProjectedSessionResult).lift : (allowedLifts.find(l => l !== lift) || '벤치프레스'));
+    if (lift === '휴식') recoveryDays = 1;
+    nextTiming = formatNextRecommendationDate(lastWorkoutDate, recoveryDays);
+  }
 
   return {
     expectedDuration: lift === '휴식' ? '20~30분' : (lift === '러닝' ? '40~50분' : (lift === '스쿼트' || lift === '데드리프트' ? '65~75분' : '55~65분')),
@@ -400,7 +432,7 @@ export function calculateMultiFactorScores(
     const avg3Cat = total3Cat > 0 ? total3Cat / 3 : 0;
     const isCategorySaturated = (catCount - avg3Cat) >= 1.0;
 
-    if ((isCycleCompleter || isOldestFourLift) && recScore >= 30 && !isCategorySaturated) {
+    if ((isCycleCompleter || isOldestFourLift) && recScore >= 22 && !isCategorySaturated) {
       rotationBonus = 8;
     }
 
@@ -444,6 +476,7 @@ export function calculateMultiFactorScores(
       goalGap: goalScore,
       frequency: freqScore,
       fatigue: fatScore,
+      rotationBonus,
       interferencePenalty: interference.penalty,
       isHardBlocked: interference.isHardBlocked,
       hardBlockReason: interference.hardBlockReason,
@@ -507,47 +540,145 @@ export function getRejectionReason(lift: MainLift, score: LiftFactorScores): str
   return '신체 회복 속도와 루틴별 우선순위 밸런스를 고려할 때 다른 종목이 오늘 수행 효율이 더 높습니다.';
 }
 
-export function getProjectedNextSession(
+export function getProjectedNextSessionInfo(
   todayLift: MainLift,
   logs: WorkoutLog[],
   goalSettings?: GoalSettings | null,
   todayStr?: string
-): MainLift {
+): ProjectedSessionResult {
   const currentTodayStr = todayStr || getLocalDateString();
 
-  let simLogs = logs;
-  if (todayLift !== '휴식') {
+  if (todayLift === '휴식') {
+    // When today's recommendation is '휴식' (Rest):
+    // 1) Compute tomorrow's date (the day after today's rest).
+    // 2) Evaluate multi-factor scores for the 4 main lifts on tomorrowStr.
+    // 3) Select the highest-scoring 4-main-lift on tomorrowStr after 1 day of rest.
+    const parts = currentTodayStr.split('-').map(Number);
+    const tomorrowObj = new Date(parts[0], parts[1] - 1, parts[2] + 1);
+    const mm = String(tomorrowObj.getMonth() + 1).padStart(2, '0');
+    const dd = String(tomorrowObj.getDate()).padStart(2, '0');
+    const tomorrowStr = `${tomorrowObj.getFullYear()}-${mm}-${dd}`;
+
+    const tomorrowScores = calculateMultiFactorScores(logs, goalSettings, null, tomorrowStr);
+    const fourLifts: MainLift[] = ['벤치프레스', '스쿼트', 'OHP', '데드리프트'];
+    const sorted = fourLifts
+      .map(lift => ({ lift, score: tomorrowScores[lift]?.total || 0 }))
+      .sort((a, b) => b.score - a.score);
+
+    const bestLift = sorted[0]?.lift || '벤치프레스';
+
+    return {
+      lift: bestLift,
+      projectedDays: 1,
+      projectedDate: tomorrowStr,
+    };
+  }
+
+  let simLogs = [...logs];
+  const alreadyLoggedToday = logs.some(l => l.date === currentTodayStr && l.routineName === todayLift);
+  if (!alreadyLoggedToday) {
     const simLog: WorkoutLog = {
-      id: 'simulated-today',
+      id: `simulated-today-${currentTodayStr}-${todayLift}`,
       date: currentTodayStr,
       routineName: todayLift,
       notes: 'Simulated log for projected next workout',
       exercises: [
         {
-          exerciseId: 'sim-1',
+          exerciseId: `sim-today-${todayLift}`,
           exerciseName: todayLift,
           category: LIFT_TO_CATEGORY[todayLift] === 'Push' ? 'Chest' : (LIFT_TO_CATEGORY[todayLift] === 'Pull' ? 'Back' : (LIFT_TO_CATEGORY[todayLift] === 'Legs' ? 'Legs' : 'Cardio')),
           sets: [{ id: 'sim-s1', reps: 5, weight: 100 }],
         },
       ],
     };
-    simLogs = [simLog, ...logs];
+    simLogs = [simLog, ...simLogs];
   }
 
+  const MAX_PROJECTION_DAYS = 7;
   const parts = currentTodayStr.split('-').map(Number);
-  const tomorrowObj = new Date(parts[0], parts[1] - 1, parts[2] + 1);
-  const mm = String(tomorrowObj.getMonth() + 1).padStart(2, '0');
-  const dd = String(tomorrowObj.getDate()).padStart(2, '0');
-  const tomorrowStr = `${tomorrowObj.getFullYear()}-${mm}-${dd}`;
+  const allowedLifts: MainLift[] = ['스쿼트', '벤치프레스', '데드리프트', 'OHP'];
 
-  const scores = calculateMultiFactorScores(simLogs, goalSettings, null, tomorrowStr);
-  const allowedLifts: MainLift[] = ['스쿼트', '벤치프레스', '데드리프트', 'OHP', '휴식'];
-  const candidates = allowedLifts
-    .map(lift => ({ lift, score: scores[lift]?.total || 0 }))
+  let firstResult: ProjectedSessionResult | null = null;
+  let currentSimLogs = [...simLogs];
+
+  for (let d = 1; d <= MAX_PROJECTION_DAYS; d++) {
+    const projObj = new Date(parts[0], parts[1] - 1, parts[2] + d);
+    const mm = String(projObj.getMonth() + 1).padStart(2, '0');
+    const dd = String(projObj.getDate()).padStart(2, '0');
+    const projDateStr = `${projObj.getFullYear()}-${mm}-${dd}`;
+
+    const scores = calculateMultiFactorScores(currentSimLogs, goalSettings, null, projDateStr);
+
+    const feasibleCandidates = allowedLifts
+      .map(lift => ({ lift, score: scores[lift] }))
+      .filter(({ lift, score }) => {
+        if (!score) return false;
+        if (d === 1 && lift === (todayLift as string)) return false;
+        if (score.isHardBlocked) return false;
+        if (score.fatigue <= 3) return false;
+        if (score.interferencePenalty >= 15) return false;
+        if (score.recovery === 0) return false;
+        return true;
+      })
+      .sort((a, b) => (b.score?.total || 0) - (a.score?.total || 0));
+
+    if (feasibleCandidates.length > 0) {
+      const bestCandidate = feasibleCandidates[0].lift;
+
+      if (!firstResult) {
+        firstResult = {
+          lift: bestCandidate,
+          projectedDays: d,
+          projectedDate: projDateStr,
+        };
+      }
+
+      const simLog: WorkoutLog = {
+        id: `simulated-proj-${projDateStr}-${bestCandidate}`,
+        date: projDateStr,
+        routineName: bestCandidate,
+        notes: 'Sequential projection simulated log',
+        exercises: [
+          {
+            exerciseId: `sim-${bestCandidate}`,
+            exerciseName: bestCandidate,
+            category: LIFT_TO_CATEGORY[bestCandidate] === 'Push' ? 'Chest' : (LIFT_TO_CATEGORY[bestCandidate] === 'Pull' ? 'Back' : (LIFT_TO_CATEGORY[bestCandidate] === 'Legs' ? 'Legs' : 'Cardio')),
+            sets: [{ id: 'sim-s1', reps: 5, weight: 100 }],
+          },
+        ],
+      };
+      currentSimLogs = [simLog, ...currentSimLogs];
+    }
+  }
+
+  if (firstResult) {
+    return firstResult;
+  }
+
+  const fallbackObj = new Date(parts[0], parts[1] - 1, parts[2] + 1);
+  const mm = String(fallbackObj.getMonth() + 1).padStart(2, '0');
+  const dd = String(fallbackObj.getDate()).padStart(2, '0');
+  const fallbackDateStr = `${fallbackObj.getFullYear()}-${mm}-${dd}`;
+  const day1Scores = calculateMultiFactorScores(simLogs, goalSettings, null, fallbackDateStr);
+  const fallbackCandidates = allowedLifts
+    .map(lift => ({ lift, score: day1Scores[lift]?.total || 0 }))
     .sort((a, b) => b.score - a.score);
 
-  const bestNext = candidates.find(c => c.lift !== todayLift && c.lift !== '휴식')?.lift || candidates[0].lift;
-  return bestNext;
+  const bestFallback = fallbackCandidates.find(c => c.lift !== todayLift)?.lift || allowedLifts.find(l => l !== todayLift) || '벤치프레스';
+  return {
+    lift: bestFallback,
+    projectedDays: 1,
+    projectedDate: fallbackDateStr,
+  };
+}
+
+export function getProjectedNextSession(
+  todayLift: MainLift,
+  logs: WorkoutLog[],
+  goalSettings?: GoalSettings | null,
+  todayStr?: string
+): MainLift {
+  return getProjectedNextSessionInfo(todayLift, logs, goalSettings, todayStr).lift;
 }
 
 export function getNextRecommendation(
@@ -590,7 +721,7 @@ export function getNextRecommendation(
     }
     savePendingRecommendation(activePending);
 
-    const projectedNextLift = getProjectedNextSession(mainLift, logs, goalSettings, todayStr);
+    const projectedNextResult = getProjectedNextSessionInfo(mainLift, logs, goalSettings, todayStr);
 
     return {
       mainLift,
@@ -604,7 +735,7 @@ export function getNextRecommendation(
       date: recDateStr,
       friendlyDate: getFriendlyRecommendationDate(todayStr),
       actionChecklist: ACTION_CHECKLIST_MAP[mainLift],
-      executionInfo: getExecutionInfo(mainLift, projectedNextLift, todayStr),
+      executionInfo: getExecutionInfo(mainLift, projectedNextResult, todayStr, todayStr),
       oneLineReason: getOneLineReason(mainLift),
       allScores: filteredScores,
       topCandidates
@@ -624,7 +755,7 @@ export function getNextRecommendation(
 
   const best = sortedCandidates[0];
   const mainLift = best.lift;
-  const projectedNextLift = getProjectedNextSession(mainLift, logs, goalSettings, todayStr);
+  const projectedNextResult = getProjectedNextSessionInfo(mainLift, logs, goalSettings, todayStr);
 
   let activePending = resolvedPending;
   if (isFourMainLift(mainLift)) {
@@ -698,6 +829,11 @@ export function getNextRecommendation(
       candidateReasons.push('누적 피로 간섭이 적어 고강도 퍼포먼스를 발휘하기 최적의 조건입니다.');
     }
 
+    // 6. Rotation Bonus reason
+    if (best.rotationBonus && best.rotationBonus > 0) {
+      candidateReasons.push('실제 연속 훈련 이력 기준 4대 종목 순환 주기에 따른 가산 보너스(+8점) 적용');
+    }
+
     // Fallbacks if fewer than 3 reasons
     if (candidateReasons.length < 3) {
       candidateReasons.push('점진적 과부하 달성 및 스트렝스 향상 타이밍');
@@ -727,7 +863,7 @@ export function getNextRecommendation(
     date: recDateStr,
     friendlyDate: getFriendlyRecommendationDate(todayStr),
     actionChecklist: ACTION_CHECKLIST_MAP[mainLift],
-    executionInfo: getExecutionInfo(mainLift, projectedNextLift, lastWorkoutDate),
+    executionInfo: getExecutionInfo(mainLift, projectedNextResult, lastWorkoutDate, todayStr),
     oneLineReason: getOneLineReason(mainLift),
     allScores: filteredScores,
     topCandidates

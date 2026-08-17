@@ -96,25 +96,24 @@ export function RecommendedWorkoutCard({
   };
 
   // Core execution details (실행 정보)
-  let nextUp = recommendation.executionInfo?.nextUp || '스쿼트';
-  if (!recommendation.executionInfo) {
-    if (recommendation.mainLift === '스쿼트') nextUp = '벤치프레스';
-    else if (recommendation.mainLift === '벤치프레스') nextUp = '데드리프트';
-    else if (recommendation.mainLift === '데드리프트') nextUp = 'OHP';
-    else if (recommendation.mainLift === 'OHP') nextUp = '휴식';
-    else nextUp = '스쿼트';
-  }
-
+  const nextUp = recommendation.executionInfo?.nextUp;
   const rawNextTiming = recommendation.executionInfo?.nextTiming;
+
   const nextRecommendationDisplay = (() => {
-    if (rawNextTiming && (rawNextTiming === '오늘' || rawNextTiming === '내일' || rawNextTiming.endsWith('요일'))) {
+    if (!recommendation.executionInfo) return undefined;
+    if (rawNextTiming) {
       return rawNextTiming;
     }
-    return formatNextRecommendationDate(
-      recommendation.executionInfo?.lastWorkoutDate || recommendation.date,
-      recommendation.executionInfo?.recoveryDays ?? 2
-    );
+    if (typeof recommendation.executionInfo.recoveryDays === 'number') {
+      return formatNextRecommendationDate(
+        recommendation.executionInfo.lastWorkoutDate || recommendation.date,
+        recommendation.executionInfo.recoveryDays
+      );
+    }
+    return undefined;
   })();
+
+  const hasExecutionDetails = Boolean(nextUp && nextRecommendationDisplay);
 
   const actionTags = recommendation.representativeExercises || (isRest ? ['회복', '이완'] : ['주동근', '코어']);
 
@@ -173,16 +172,18 @@ export function RecommendedWorkoutCard({
         <div className="border-t border-slate-800/40 my-1" />
 
         {/* ④ 실행 정보 (다음 운동, 추천 시점) */}
-        <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs py-1">
-          <div className="flex flex-col justify-center">
-            <span className="text-slate-500 font-bold text-[9px] uppercase tracking-wider">예상 다음 세션</span>
-            <span className="font-extrabold text-slate-100 text-sm sm:text-base leading-tight mt-0.5">{nextUp}</span>
+        {hasExecutionDetails && (
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs py-1">
+            <div className="flex flex-col justify-center">
+              <span className="text-slate-500 font-bold text-[9px] uppercase tracking-wider">예상 다음 세션</span>
+              <span className="font-extrabold text-slate-100 text-sm sm:text-base leading-tight mt-0.5">{nextUp}</span>
+            </div>
+            <div className="flex flex-col justify-center">
+              <span className="text-slate-500 font-bold text-[9px] uppercase tracking-wider">추천 시점</span>
+              <span className="font-extrabold text-slate-100 text-sm sm:text-base leading-tight mt-0.5">{nextRecommendationDisplay}</span>
+            </div>
           </div>
-          <div className="flex flex-col justify-center">
-            <span className="text-slate-500 font-bold text-[9px] uppercase tracking-wider">추천 시점</span>
-            <span className="font-extrabold text-slate-100 text-sm sm:text-base leading-tight mt-0.5">{nextRecommendationDisplay}</span>
-          </div>
-        </div>
+        )}
 
         {/* 대표 동작 태그 */}
         <div className="flex flex-wrap gap-1.5 pt-1">
@@ -428,6 +429,33 @@ export function RecommendedWorkoutCard({
                                 />
                               </div>
                             </div>
+
+                            {item.rotationBonus && item.rotationBonus > 0 ? (
+                              <div className="space-y-1">
+                                <div className="flex justify-between items-center text-[10px]">
+                                  <span className="text-amber-400 font-bold">4대 종목 순환 가산 보너스 (+8점)</span>
+                                  <span className="text-amber-400 font-mono font-bold">+{item.rotationBonus}점</span>
+                                </div>
+                                <div className="bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                                  <div className="h-full rounded-full bg-amber-400 w-full" />
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {item.interferencePenalty && item.interferencePenalty > 0 ? (
+                              <div className="space-y-1">
+                                <div className="flex justify-between items-center text-[10px]">
+                                  <span className="text-rose-400 font-bold">세션 간섭 감점 (피로 누적)</span>
+                                  <span className="text-rose-400 font-mono font-bold">-{item.interferencePenalty}점</span>
+                                </div>
+                                <div className="bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                                  <div 
+                                    className="h-full rounded-full bg-rose-500" 
+                                    style={{ width: `${Math.min(100, (item.interferencePenalty / 50) * 100)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            ) : null}
                           </div>
                         );
                       })()}

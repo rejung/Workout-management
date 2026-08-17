@@ -224,7 +224,7 @@ export function buildTrainingState(
   });
 
   // 4. 4-Main-Lift Rotation State (Derived from WorkoutLog SSOT)
-  const fourMainLifts: FourMainLift[] = ['스쿼트', '벤치프레스', '데드리프트', 'OHP'];
+  const fourMainLifts: FourMainLift[] = ['벤치프레스', '스쿼트', 'OHP', '데드리프트'];
   const lastDateMap = {} as Record<FourMainLift, string | null>;
   const daysAgoMap = {} as Record<FourMainLift, number>;
 
@@ -243,7 +243,11 @@ export function buildTrainingState(
     }
   });
 
-  const sortedByOldest = [...fourMainLifts].sort((a, b) => daysAgoMap[b] - daysAgoMap[a]);
+  const sortedByOldest = [...fourMainLifts].sort((a, b) => {
+    const diff = daysAgoMap[b] - daysAgoMap[a];
+    if (diff !== 0) return diff;
+    return fourMainLifts.indexOf(a) - fourMainLifts.indexOf(b);
+  });
   const oldestLift = sortedByOldest[0];
 
   const recentOrder: FourMainLift[] = [];
