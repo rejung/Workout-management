@@ -23,6 +23,26 @@ import { deriveStressMagnitudeInput } from './stressMagnitudeInputs';
 import { StressMagnitudeInput, StrengthStressMagnitudeInput } from '../types/stressMagnitudeInput.types';
 
 export const WORKOUT_CONTROLLED_VALIDATION_LOGS: readonly WorkoutLog[] = Object.freeze([
+  // 0. 2026-02-14 Legacy Squat (4 sets: 60kg x 10, 60kg x 10, 80kg x 10, 80kg x 10, legacy unassigned set roles)
+  {
+    id: 'v1-log-2026-02-14-92',
+    date: '2026-02-14',
+    routineName: '스쿼트',
+    notes: 'Legacy V1 import record with unassigned set roles',
+    exercises: [
+      {
+        exerciseId: 'squat',
+        exerciseName: '스쿼트 (Squat)',
+        category: 'Legs',
+        sets: [
+          { id: 'v1-sq-1', weight: 60, reps: 10 },
+          { id: 'v1-sq-2', weight: 60, reps: 10 },
+          { id: 'v1-sq-3', weight: 80, reps: 10 },
+          { id: 'v1-sq-4', weight: 80, reps: 10 }
+        ]
+      }
+    ]
+  },
   // 1. 2026-07-29 Bench Press (7 sets: 2 warmup, 5 working)
   {
     id: '4f1b2c3d-e5f6-47a8-9b0c-1d2e3f4a5b6c',
@@ -295,9 +315,9 @@ export const CONTROLLED_VALIDATION_SNAPSHOT: ApplicationSnapshot = Object.freeze
     snapshotType: 'application',
     schemaVersion: 1,
     statistics: {
-      workoutCount: WORKOUT_CONTROLLED_VALIDATION_LOGS.length, // 8 fixture logs
-      exerciseCount: 15,
-      setCount: 65,
+      workoutCount: WORKOUT_CONTROLLED_VALIDATION_LOGS.length, // 9 fixture logs (8 standard + 1 legacy V1)
+      exerciseCount: 16,
+      setCount: 69,
       weightCount: 0
     },
     healthScore: 100
@@ -309,7 +329,7 @@ export const CONTROLLED_VALIDATION_SNAPSHOT: ApplicationSnapshot = Object.freeze
 });
 
 /**
- * Derives the candidate pool of StressMagnitudeInput objects from the controlled validation fixture (8 logs).
+ * Derives the candidate pool of StressMagnitudeInput objects from the controlled validation fixture (9 logs).
  * Uses frozen CU2 and CU3.3 derivation pipelines for deterministic domain regression testing.
  *
  * NOTE: This is a controlled fixture derivation, NOT a full-backup derivation.

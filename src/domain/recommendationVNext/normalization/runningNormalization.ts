@@ -298,3 +298,4 @@ export function formatPace(paceSecondsPerKm?: number): string | undefined {
   const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, '0')}/km`;
 }
+

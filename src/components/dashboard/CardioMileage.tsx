@@ -66,35 +66,6 @@ export function RecommendedWorkoutCard({
     }
   };
 
-  // Get dynamic emoji & title
-  const getWorkoutTitle = () => {
-    const lift = recommendation.mainLift;
-    if (!lift || lift === '휴식') return '🌙 휴식';
-    return `🏋️ ${lift}`;
-  };
-
-  // 1-line beautiful reason depending on the lift (max 2 lines)
-  const getWorkoutReason = () => {
-    if (recommendation.oneLineReason) return recommendation.oneLineReason;
-    const lift = recommendation.mainLift;
-    if (!lift || lift === '휴식') {
-      return '최근 훈련 빈도를 고려하면 오늘은 회복을 우선하는 것이 다음 세션의 수행 능력 향상에 도움이 됩니다.';
-    }
-    if (lift.includes('스쿼트')) {
-      return '하체 및 코어 부위의 피로가 충분히 해소되어 강력한 스쿼트 스트렝스 훈련을 수행하기 가장 적합한 날입니다.';
-    }
-    if (lift.includes('벤치프레스')) {
-      return '가슴과 삼두근의 초과회복이 극대화된 시점으로, 벤치프레스 점진적 과부하에 최적의 날입니다.';
-    }
-    if (lift.includes('데드리프트')) {
-      return '후면 사슬의 근력이 완벽히 충전되어 고중량 전신 스트렝스 훈련을 강력하게 소화할 준비가 되었습니다.';
-    }
-    if (lift.includes('OHP')) {
-      return '견갑대 주변 소근육과 삼각근이 말끔하게 회복되어 가볍고 탄력 있는 프레스 밀기 훈련이 가능한 상태입니다.';
-    }
-    return '현재 신체 회복 상태와 누적 피로 지표에 완벽히 매칭된 오늘의 커스텀 권장 훈련 세션입니다.';
-  };
-
   // Core execution details (실행 정보)
   const nextUp = recommendation.executionInfo?.nextUp;
   const rawNextTiming = recommendation.executionInfo?.nextTiming;
@@ -158,14 +129,11 @@ export function RecommendedWorkoutCard({
           )}
         </div>
 
-        {/* ① 오늘 추천 운동 & ② 한 줄 추천 이유 */}
-        <div className="space-y-2">
+        {/* ① 오늘 추천 운동 */}
+        <div>
           <span className="text-3xl sm:text-4xl font-black text-emerald-400 tracking-tight font-sans block leading-none">
             {recommendation.mainLift}
           </span>
-          <p className="text-sm text-slate-200 leading-relaxed font-sans font-medium">
-            {getWorkoutReason()}
-          </p>
         </div>
 
         {/* Divider */}

@@ -1,8 +1,12 @@
 /**
- * Strength Stress Historical Full Backup Audit Suite (VNext Recommendation Engine - CU3.5.3)
+ * Strength Stress Historical Full Backup Audit Suite (VNext Recommendation Engine - CU3.5.3A)
  *
  * Dedicated validation module that executes the complete E2E derivation funnel
  * using the actual WorkoutBackup_v2.1_2026-08-16.json workspace file.
+ *
+ * Scope & Freeze Boundary:
+ * "CU3.5 Freeze는 Historical Collection Semantics에 대한 판정이며,
+ * Actual Full Backup Exhaustive Coverage를 의미하지 않는다."
  *
  * Full Derivation Funnel Verified:
  * Actual WorkoutLogs
