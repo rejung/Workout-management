@@ -34,6 +34,7 @@ import {
   E1RMTrend,
   ProgressOpportunityClass,
   ProgressOpportunityExplainabilitySummary,
+  PROGRESSION_POLICY_THRESHOLDS,
   RunningProgressOpportunityContext,
   StrengthProgressOpportunityContext,
   WorkCapacityTrend,
@@ -41,6 +42,7 @@ import {
 import { getCanonicalExerciseStressProfile } from '../stress/stressVocabulary';
 import { deriveRunningHistoricalReference } from '../context/runningHistoricalReference';
 import { interpretRunningSessionVsHistory } from '../context/runningInterpretation';
+import { filterTemporallyEligibleSessions } from '../temporal/temporalEligibility';
 
 /**
  * Calculates median from an array of numbers. Returns undefined if empty.
@@ -145,12 +147,17 @@ function evaluateStrengthOpportunity(
 
   let e1RMTrend: E1RMTrend = 'stable';
   if (latestE1RM !== undefined && baselineMedianE1RM !== undefined) {
-    if (latestE1RM >= baselineMedianE1RM * 1.02 || (historicalMaxE1RM && latestE1RM >= historicalMaxE1RM)) {
+    if (
+      latestE1RM >= baselineMedianE1RM * PROGRESSION_POLICY_THRESHOLDS.E1RM_RISING_THRESHOLD_RATIO ||
+      (historicalMaxE1RM !== undefined && latestE1RM > historicalMaxE1RM)
+    ) {
       e1RMTrend = 'rising';
       notes.push(
         `e1RM progression observed: latest peak ${latestE1RM}kg vs baseline median ${baselineMedianE1RM}kg.`
       );
-    } else if (latestE1RM < baselineMedianE1RM * 0.95) {
+    } else if (
+      latestE1RM < baselineMedianE1RM * PROGRESSION_POLICY_THRESHOLDS.E1RM_BELOW_BASELINE_THRESHOLD_RATIO
+    ) {
       e1RMTrend = 'below-baseline';
       notes.push(
         `Latest peak e1RM (${latestE1RM}kg) is below baseline median (${baselineMedianE1RM}kg).`
@@ -170,7 +177,7 @@ function evaluateStrengthOpportunity(
     .filter((v): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0);
   const baselineMedianVolume = calculateMedian(priorVolumes);
 
-  // Work Capacity Extraction
+  // Work Capacity Extraction (with load-context preservation)
   const latestSets = latest.setEvidence.explicitWorkingSetCount;
   const latestReps = latest.workCapacityEvidence?.totalReps;
   const priorSets = priorSessions.map((s) => s.setEvidence.explicitWorkingSetCount);
@@ -182,35 +189,54 @@ function evaluateStrengthOpportunity(
   const medianPriorReps = calculateMedian(priorReps);
 
   let workCapacityTrend: WorkCapacityTrend = 'stable';
-  if (
-    (latestSets !== undefined && medianPriorSets !== undefined && latestSets > medianPriorSets) ||
-    (latestReps !== undefined && medianPriorReps !== undefined && latestReps > medianPriorReps * 1.05)
-  ) {
+  const hasRepsExpansion =
+    latestReps !== undefined &&
+    medianPriorReps !== undefined &&
+    latestReps >= medianPriorReps * PROGRESSION_POLICY_THRESHOLDS.WORK_CAPACITY_EXPANSION_RATIO;
+  const hasSetsExpansion =
+    latestSets !== undefined && medianPriorSets !== undefined && latestSets > medianPriorSets;
+
+  // Verify load context: work capacity progression requires non-declining load regime
+  const isLoadPreserved =
+    latestE1RM === undefined ||
+    baselineMedianE1RM === undefined ||
+    latestE1RM >= baselineMedianE1RM * PROGRESSION_POLICY_THRESHOLDS.E1RM_BELOW_BASELINE_THRESHOLD_RATIO;
+
+  if ((hasSetsExpansion || hasRepsExpansion) && isLoadPreserved) {
     workCapacityTrend = 'increasing';
     notes.push(
-      `Work capacity expansion: working sets (${latestSets} vs median ${medianPriorSets}) or reps (${latestReps} vs median ${medianPriorReps}).`
+      `Work capacity expansion: working sets (${latestSets} vs median ${medianPriorSets}) or reps (${latestReps} vs median ${medianPriorReps}) within matching load context.`
     );
   } else if (
     latestReps !== undefined &&
     medianPriorReps !== undefined &&
-    latestReps < medianPriorReps * 0.9
+    latestReps < medianPriorReps * PROGRESSION_POLICY_THRESHOLDS.WORK_CAPACITY_DECREASE_RATIO
   ) {
     workCapacityTrend = 'decreasing';
+    notes.push(
+      `Work capacity contraction: observed reps (${latestReps}) below baseline median (${medianPriorReps}).`
+    );
   } else {
     workCapacityTrend = 'stable';
   }
 
   // GS9 / GS-F Intensity Shift Detection
+  // Strict requirement: Volume decrease MUST be accompanied by actual higher-load advancement (rising e1RM),
+  // NEVER triggered when e1RM is equal or unadvanced.
   let isIntensityShift = false;
   let intensityShiftRationale: string | undefined = undefined;
+
+  const isRealHigherLoadAdvancement =
+    latestE1RM !== undefined &&
+    baselineMedianE1RM !== undefined &&
+    (e1RMTrend === 'rising' ||
+      latestE1RM >= baselineMedianE1RM * PROGRESSION_POLICY_THRESHOLDS.E1RM_RISING_THRESHOLD_RATIO);
 
   if (
     latestVol !== undefined &&
     baselineMedianVolume !== undefined &&
     latestVol < baselineMedianVolume &&
-    latestE1RM !== undefined &&
-    baselineMedianE1RM !== undefined &&
-    latestE1RM >= baselineMedianE1RM
+    isRealHigherLoadAdvancement
   ) {
     isIntensityShift = true;
     intensityShiftRationale =
@@ -220,10 +246,23 @@ function evaluateStrengthOpportunity(
     );
   }
 
-  // Classify Opportunity
+  // Classify Opportunity with Truthful Maintenance / Regression-Uncertain Semantics
   let opportunityClass: ProgressOpportunityClass = 'maintenance-supported';
-  if (e1RMTrend === 'rising' || workCapacityTrend === 'increasing' || isIntensityShift) {
+  const hasProgressionSignal = e1RMTrend === 'rising' || workCapacityTrend === 'increasing' || isIntensityShift;
+  const hasDeclineSignal = !isIntensityShift && (e1RMTrend === 'below-baseline' || workCapacityTrend === 'decreasing');
+
+  if (hasProgressionSignal && hasDeclineSignal) {
+    opportunityClass = 'mixed-evidence';
+    notes.push('Divergent progression signals observed across load and work capacity metrics.');
+  } else if (hasProgressionSignal) {
     opportunityClass = 'progression-supported';
+  } else if (hasDeclineSignal) {
+    opportunityClass = 'regression-uncertain';
+    notes.push(
+      'Performance below baseline range; causal origin (acute fatigue vs capacity change) is uncertain.'
+    );
+  } else if (e1RMTrend === 'stable' || workCapacityTrend === 'stable') {
+    opportunityClass = 'maintenance-supported';
   } else {
     opportunityClass = 'maintenance-supported';
   }
@@ -390,10 +429,13 @@ export function deriveCandidateProgressOpportunityEvidence(
     });
   }
 
+  // Filter all sessions to only strictly temporally eligible records (Single Temporal Frame SSOT)
+  const eligibleSessions = filterTemporallyEligibleSessions(allSessions, evaluationContext);
+
   // Running Modality
   if (candidateExerciseId === 'running') {
     const runningSessions: CanonicalRunningSession[] = [];
-    for (const s of allSessions) {
+    for (const s of eligibleSessions) {
       if ('metrics' in s) {
         runningSessions.push(s as CanonicalRunningSession);
       } else if (s.kind === 'running') {
@@ -438,6 +480,12 @@ export function deriveCandidateProgressOpportunityEvidence(
       case 'exploratory-supported':
         headline = `Running baseline anchors established from initial session.`;
         break;
+      case 'mixed-evidence':
+        headline = `Running exhibits mixed performance indicators.`;
+        break;
+      case 'regression-uncertain':
+        headline = `Running performance is below historical range; causal attribution is uncertain.`;
+        break;
       case 'insufficient-evidence':
         headline = `Running progression opportunity is unestablished (insufficient history).`;
         break;
@@ -464,7 +512,7 @@ export function deriveCandidateProgressOpportunityEvidence(
 
   // Strength Modality
   const matchingStrengthInputs: StrengthStressMagnitudeInput[] = [];
-  for (const s of allSessions) {
+  for (const s of eligibleSessions) {
     if ('kind' in s && s.kind === 'strength') {
       const st = s as StrengthStressMagnitudeInput;
       if (
@@ -496,6 +544,12 @@ export function deriveCandidateProgressOpportunityEvidence(
       break;
     case 'exploratory-supported':
       headline = `${candidateExerciseName} exploratory baseline established from initial session.`;
+      break;
+    case 'mixed-evidence':
+      headline = `${candidateExerciseName} exhibits mixed progression signals across load and volume dimensions.`;
+      break;
+    case 'regression-uncertain':
+      headline = `${candidateExerciseName} performance is below baseline range; causal origin is uncertain.`;
       break;
     case 'insufficient-evidence':
       headline = `${candidateExerciseName} progression opportunity is unestablished (insufficient history).`;

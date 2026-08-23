@@ -97,6 +97,46 @@ export function getFriendlyRecommendationDate(dateStr: string): string {
   }
 }
 
+export function formatNextRecommendationDate(
+  lastWorkoutDateStr?: string,
+  recoveryDays: number = 2
+): string {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  let baseDate = new Date(today);
+  if (lastWorkoutDateStr) {
+    const cleanStr = lastWorkoutDateStr.replace(/\./g, '-').replace(/\s+/g, '').trim();
+    const parts = cleanStr.split('-');
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      const parsed = new Date(year, month, day);
+      if (!isNaN(parsed.getTime())) {
+        baseDate = parsed;
+        baseDate.setHours(0, 0, 0, 0);
+      }
+    }
+  }
+
+  const targetDate = new Date(baseDate);
+  targetDate.setDate(targetDate.getDate() + recoveryDays);
+
+  const diffMs = targetDate.getTime() - today.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 0) {
+    return '오늘';
+  }
+  if (diffDays === 1) {
+    return '내일';
+  }
+
+  const daysOfWeek = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
+  return daysOfWeek[targetDate.getDay()];
+}
+
 export * from './dateRange';
 
 

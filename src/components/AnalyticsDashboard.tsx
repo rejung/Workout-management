@@ -10,8 +10,8 @@ import DashboardHeader from './dashboard/DashboardHeader';
 import SummaryCards from './dashboard/SummaryCards';
 import { RecommendedWorkoutCard } from './dashboard/CardioMileage';
 import WeightDetailModal from './dashboard/WeightDetailModal';
-import { getMainLiftOfLog } from '../utils/recommendationEngine';
 import {
+  getMainLiftOfLog,
   calculateWeightMetrics,
   getE1RMChange,
   getCardioMileage,

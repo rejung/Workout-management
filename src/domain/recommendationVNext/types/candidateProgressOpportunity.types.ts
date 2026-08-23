@@ -35,8 +35,23 @@ import {
 } from './running.types';
 
 // =========================================================================
-// 1. Categorical Progress Opportunity Taxonomy
+// 1. Categorical Progress Opportunity Taxonomy & Product Policy
 // =========================================================================
+
+/**
+ * Product Policy Thresholds for Progress Opportunity Evaluation (CU4.x Explicit SSOT).
+ * Elevated from undocumented magic multipliers to explicit domain constants.
+ */
+export const PROGRESSION_POLICY_THRESHOLDS = Object.freeze({
+  /** Minimum e1RM advancement ratio over baseline median to be considered rising (+2%) */
+  E1RM_RISING_THRESHOLD_RATIO: 1.02,
+  /** e1RM drop ratio below baseline median to be considered below-baseline (-5%) */
+  E1RM_BELOW_BASELINE_THRESHOLD_RATIO: 0.95,
+  /** Work capacity total reps expansion ratio over baseline median (+5%) */
+  WORK_CAPACITY_EXPANSION_RATIO: 1.05,
+  /** Work capacity total reps decrease ratio below baseline median (-10%) */
+  WORK_CAPACITY_DECREASE_RATIO: 0.90,
+});
 
 /**
  * Categorical classification of candidate progress opportunity.
@@ -44,9 +59,12 @@ import {
  * - 'progression-supported': Historical progression evidence structurally supports seeking
  *   higher stimulus / progression (e.g. rising e1RM, increased work capacity, volume stability
  *   with load advancement opportunity, running pace/distance milestones).
- * - 'maintenance-supported': Established historical baseline supports consistent work at
- *   current capacity without immediate progression pressure.
+ * - 'maintenance-supported': Established historical baseline shows stable performance within
+ *   acceptable variance across sessions without decline or acute progression.
  * - 'exploratory-supported': Single-session reference or early baseline exploration.
+ * - 'mixed-evidence': Divergent metrics (e.g. volume/reps increased while e1RM declined).
+ * - 'regression-uncertain': Significant drop below baseline range; causal origin (acute fatigue,
+ *   biological variation, or actual regression) is uncertain without subjective attribution.
  * - 'insufficient-evidence': Cold start or zero interpretable records (no false certainty).
  * - 'unmapped': Exercise has no profile mapping or unknown identity.
  */
@@ -54,6 +72,8 @@ export type ProgressOpportunityClass =
   | 'progression-supported'
   | 'maintenance-supported'
   | 'exploratory-supported'
+  | 'mixed-evidence'
+  | 'regression-uncertain'
   | 'insufficient-evidence'
   | 'unmapped';
 

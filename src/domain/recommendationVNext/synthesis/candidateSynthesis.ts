@@ -49,9 +49,11 @@ const NEED_RANK: Record<string, number> = {
 };
 
 const OPPORTUNITY_RANK: Record<string, number> = {
-  'progression-supported': 4,
-  'exploratory-supported': 3,
-  'maintenance-supported': 2,
+  'progression-supported': 6,
+  'exploratory-supported': 5,
+  'maintenance-supported': 4,
+  'mixed-evidence': 3,
+  'regression-uncertain': 2,
   'insufficient-evidence': 1,
   unmapped: 0,
 };

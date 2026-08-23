@@ -40,11 +40,13 @@ import {
   getCanonicalExerciseStressProfile,
 } from '../stress/stressVocabulary';
 import { DEFAULT_FOUNDATION_CANDIDATE_IDS } from '../readiness/candidateReadiness';
+import { filterTemporallyEligibleSessions } from '../temporal/temporalEligibility';
 
 /**
  * Calculates the exact calendar day delta between two local calendar date strings (YYYY-MM-DD).
  * Evaluates pure Gregorian day distance in the local calendar frame.
- * Returns 0 if both dates are identical. Positive if currentDate > priorDate.
+ * Returns 0 if both dates are identical. Positive if currentDate > priorDate (priorDate in past).
+ * Negative if currentDate < priorDate (priorDate in future).
  */
 export function computeCalendarDayDelta(currentDate: string, priorDate: string): number {
   const [cy, cm, cd] = currentDate.split('-').map(Number);
@@ -115,10 +117,11 @@ function deriveDimensionExposureSummary(
     ? computeCalendarDayDelta(evalDate, lastDimensionTrainedDate)
     : undefined;
 
-  // Filter to recent window
-  const recentSessions = matchingSessions.filter(
-    (s) => computeCalendarDayDelta(evalDate, s.date) <= recentWindowDays
-  );
+  // Filter to recent window: strictly 0 <= delta <= recentWindowDays (negative delta excluded)
+  const recentSessions = matchingSessions.filter((s) => {
+    const delta = computeCalendarDayDelta(evalDate, s.date);
+    return delta >= 0 && delta <= recentWindowDays;
+  });
 
   const contributingExerciseIds = Object.freeze([
     ...new Set(recentSessions.map((s) => s.exerciseId)),
@@ -279,12 +282,15 @@ export function deriveCandidateTrainingNeedEvidence(
 
   const requiredDimensions = profile.dimensions;
 
+  // Filter all sessions to strictly temporally eligible records (Single Temporal Frame SSOT)
+  const eligibleSessions = filterTemporallyEligibleSessions(allHistoricalSessions, evaluationContext);
+
   // Filter strictly earlier sessions for candidate
   const normalizedCandidateKey = normalizeExerciseKey(candidateExerciseId);
   const matchingCandidateSessions: GenericHistoricalSessionFact[] = [];
   const normalizedAllSessions: GenericHistoricalSessionFact[] = [];
 
-  for (const s of allHistoricalSessions) {
+  for (const s of eligibleSessions) {
     const normalizedKey = normalizeExerciseKey(s.exerciseId);
     const sessionFact: GenericHistoricalSessionFact = {
       sourceLogId: s.sourceLogId,
@@ -344,9 +350,10 @@ export function deriveCandidateTrainingNeedEvidence(
   });
 
   // 3. Recent window sessions (14 days)
-  const recentWindowSessions = matchingCandidateSessions.filter(
-    (s) => computeCalendarDayDelta(evalDate, s.date) <= 14
-  );
+  const recentWindowSessions = matchingCandidateSessions.filter((s) => {
+    const delta = computeCalendarDayDelta(evalDate, s.date);
+    return delta >= 0 && delta <= 14;
+  });
   const recentSessionCount = recentWindowSessions.length;
   const recentUniqueDaysCount = new Set(recentWindowSessions.map((s) => s.date)).size;
 

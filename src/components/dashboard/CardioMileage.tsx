@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
-import { Flame, Compass, ChevronRight, Check, BarChart2, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { useState } from 'react';
+import { Flame, Compass, ChevronRight, BarChart2, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import { RecommendationResult } from '../../utils/workoutEngine';
-import { formatNextRecommendationDate } from '../../utils/recommendationEngine';
+import { formatNextRecommendationDate } from '../../utils/dateUtils';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface CardioMileageRow {
@@ -33,27 +33,13 @@ export function RecommendedWorkoutCard({
   const recommendation = propNextRecommendation || defaultRecommendation;
   const isRest = recommendation.mainLift === '휴식' || !recommendation.mainLift;
 
-  // State for rest day check and UI controls
-  const [isRestCompleted, setIsRestCompleted] = useState(false);
-  const [showToast, setShowToast] = useState(false);
+  // Accordion state
   const [showScores, setShowScores] = useState(false);
   const [showReasons, setShowReasons] = useState(false);
   const [showTopCandidates, setShowTopCandidates] = useState(false);
 
-  // Handle toast timeout
-  useEffect(() => {
-    if (showToast) {
-      const timer = setTimeout(() => setShowToast(false), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [showToast]);
-
   const handleStart = () => {
-    if (isRest) {
-      setIsRestCompleted(prev => !prev);
-      setShowToast(true);
-      return;
-    }
+    if (isRest) return;
 
     if (onStartWorkout) {
       let routineId = '';
@@ -61,6 +47,8 @@ export function RecommendedWorkoutCard({
       else if (recommendation.mainLift === 'OHP') routineId = 'routine-ohp';
       else if (recommendation.mainLift === '데드리프트') routineId = 'routine-deadlift';
       else if (recommendation.mainLift === '스쿼트') routineId = 'routine-squat';
+      else if ((recommendation.mainLift as string) === '바벨로우' || recommendation.mainLift === '바벨 로우') routineId = 'routine-barbell-row';
+      else if (recommendation.mainLift === '러닝' || (recommendation.mainLift as string) === '유산소') routineId = 'routine-cardio';
       
       onStartWorkout(routineId);
     }
@@ -86,7 +74,209 @@ export function RecommendedWorkoutCard({
 
   const hasExecutionDetails = Boolean(nextUp && nextRecommendationDisplay);
 
-  const actionTags = recommendation.representativeExercises || (isRest ? ['회복', '이완'] : ['주동근', '코어']);
+  const actionTags = recommendation.representativeExercises || (isRest ? ['충분한 수면', '가벼운 산책', '동적 스트레칭', '수분 섭취'] : ['주동근', '코어']);
+
+  // Accordion Renderers
+  const renderReasonsAccordion = () => {
+    if (!recommendation.reasons || recommendation.reasons.length === 0) return null;
+    return (
+      <div className="space-y-3">
+        <button
+          type="button"
+          onClick={() => setShowReasons(!showReasons)}
+          className="w-full flex items-center justify-between py-2.5 px-3.5 bg-slate-950/40 hover:bg-slate-950/70 border border-slate-800/80 rounded-xl text-xs text-slate-400 hover:text-white transition-all cursor-pointer font-bold"
+        >
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+            <span>추천 이유</span>
+          </div>
+          {showReasons ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+        <AnimatePresence>
+          {showReasons && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.25 }}
+              className="overflow-hidden"
+            >
+              <div className="bg-slate-950/60 border border-slate-800/60 rounded-xl p-3.5 space-y-2">
+                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
+                  {isRest ? '휴식 결정 사유' : '분석 기반 추천 사유'}
+                </span>
+                <div className="space-y-1.5">
+                  {recommendation.reasons.map((reason, idx) => (
+                    <div key={idx} className="text-xs text-slate-300 flex items-start gap-2 font-medium">
+                      <span className="text-emerald-400 font-bold shrink-0 mt-0.5">•</span>
+                      <span>{reason.replace(/^✓\s*/, '')}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  };
+
+  const renderScoresAccordion = () => {
+    return (
+      <div className="space-y-3">
+        <button
+          type="button"
+          onClick={() => setShowScores(!showScores)}
+          className="w-full flex items-center justify-between py-2.5 px-3.5 bg-slate-950/40 hover:bg-slate-950/70 border border-slate-800/80 rounded-xl text-xs text-slate-400 hover:text-white transition-all cursor-pointer font-bold"
+        >
+          <div className="flex items-center gap-2">
+            <BarChart2 className="w-3.5 h-3.5 text-indigo-400" />
+            <span>평가 기준</span>
+          </div>
+          {showScores ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+
+        <AnimatePresence>
+          {showScores && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.25 }}
+              className="overflow-hidden space-y-4 pt-1"
+            >
+              <div className="bg-slate-950/80 border border-slate-850 rounded-xl p-4 space-y-3">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                  VNext 다차원 추천 평가 체계
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="bg-slate-900/60 border border-slate-800/60 p-3 rounded-xl space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                      <span className="text-xs font-bold text-slate-200">훈련 준비도</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 font-medium leading-relaxed pl-3">
+                      최근 부하와 필요한 움직임 영역의 중첩
+                    </p>
+                  </div>
+
+                  <div className="bg-slate-900/60 border border-slate-800/60 p-3 rounded-xl space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+                      <span className="text-xs font-bold text-slate-200">훈련 필요도</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 font-medium leading-relaxed pl-3">
+                      최근 수행 간격과 훈련 이력
+                    </p>
+                  </div>
+
+                  <div className="bg-slate-900/60 border border-slate-800/60 p-3 rounded-xl space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                      <span className="text-xs font-bold text-slate-200">발전 기회</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 font-medium leading-relaxed pl-3">
+                      최근 기록에서 다음 훈련 자극 기회
+                    </p>
+                  </div>
+
+                  <div className="bg-slate-900/60 border border-slate-800/60 p-3 rounded-xl space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
+                      <span className="text-xs font-bold text-slate-200">훈련 맥락</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 font-medium leading-relaxed pl-3">
+                      최근 빈도와 복합 부하
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  };
+
+  const renderCandidatesAccordion = () => {
+    if (!recommendation.topCandidates || recommendation.topCandidates.length === 0) return null;
+    return (
+      <div className="space-y-3">
+        <button
+          type="button"
+          onClick={() => setShowTopCandidates(!showTopCandidates)}
+          className="w-full flex items-center justify-between py-2.5 px-3.5 bg-slate-950/40 hover:bg-slate-950/70 border border-slate-800/80 rounded-xl text-xs text-slate-400 hover:text-white transition-all cursor-pointer font-bold"
+        >
+          <div className="flex items-center gap-2">
+            <Compass className="w-3.5 h-3.5 text-emerald-400" />
+            <span>후보 운동</span>
+          </div>
+          {showTopCandidates ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+
+        <AnimatePresence>
+          {showTopCandidates && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.25 }}
+              className="overflow-hidden space-y-2 pt-1"
+            >
+              {recommendation.topCandidates.map((candidate) => {
+                const isSelected = !isRest && (candidate.isCurrent || candidate.lift === recommendation.mainLift || recommendation.mainLift.includes(candidate.lift));
+                const statusLabel = candidate.statusLabel || (isSelected ? '최적 추천' : '수행 가능');
+                const statusType = candidate.statusType || (isSelected ? 'preferred' : 'viable');
+
+                let badgeClass = 'bg-slate-800/80 text-slate-400 border-slate-700/50';
+                if (statusType === 'preferred' || isSelected) {
+                  badgeClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/35';
+                } else if (statusType === 'viable') {
+                  badgeClass = 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30';
+                } else if (statusType === 'caution') {
+                  badgeClass = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
+                } else if (statusType === 'recent') {
+                  badgeClass = 'bg-slate-800/80 text-slate-400 border-slate-700/50';
+                } else if (statusType === 'deferred') {
+                  badgeClass = 'bg-slate-800/60 text-slate-500 border-slate-700/40';
+                }
+
+                return (
+                  <div 
+                    key={candidate.lift} 
+                    className={`p-3 rounded-xl border transition-all duration-200 ${
+                      isSelected 
+                        ? 'bg-emerald-950/15 border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.06)]' 
+                        : 'bg-slate-950/40 border-slate-850/60 hover:border-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-black ${isSelected ? 'text-emerald-400' : 'text-slate-200'}`}>
+                          {candidate.lift}
+                        </span>
+                        <span className={`text-[9px] border px-1.5 py-0.5 rounded-md font-bold tracking-tight ${badgeClass}`}>
+                          {statusLabel}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 선택되지 않은 사유 한 줄 추가 */}
+                    {!isSelected && candidate.rejectionReason && (
+                      <div className="text-[10px] text-slate-400 font-medium mt-1.5 pl-2.5 border-l-2 border-slate-800 flex items-start gap-1">
+                        <span>{candidate.rejectionReason}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  };
 
   return (
     <motion.div 
@@ -95,41 +285,15 @@ export function RecommendedWorkoutCard({
       transition={{ duration: 0.15 }}
       className="relative bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-7 shadow-lg flex flex-col justify-between transition-all duration-300 hover:border-emerald-500/10"
     >
-      
-      {/* Toast Overlay notification */}
-      <AnimatePresence>
-        {showToast && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="absolute top-4 left-4 right-4 bg-emerald-950 border border-emerald-500/30 text-emerald-400 text-xs font-bold py-2.5 px-3.5 rounded-xl flex items-center gap-2 shadow-xl z-20 justify-center"
-          >
-            <Check className="w-3.5 h-3.5 stroke-[3]" />
-            <span>오늘의 회복 계획을 완료했습니다.</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <div className="space-y-6">
-        {/* Top Header Label & Completed Badge */}
+        {/* Top Header Label */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">🏋️ 오늘의 추천</span>
-            {recommendation.pendingRecommendation && recommendation.pendingRecommendation.overdueDays > 0 && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                ⏳ {recommendation.pendingRecommendation.overdueDays}일 이월
-              </span>
-            )}
           </div>
-          {isRest && isRestCompleted && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/15 text-emerald-400 border border-emerald-500/35 tracking-wider uppercase">
-              ✓ 오늘 계획 완료
-            </span>
-          )}
         </div>
 
-        {/* ① 오늘 추천 운동 */}
+        {/* ① 오늘 추천 운동 / 휴식 */}
         <div>
           <span className="text-3xl sm:text-4xl font-black text-emerald-400 tracking-tight font-sans block leading-none">
             {recommendation.mainLift}
@@ -139,7 +303,7 @@ export function RecommendedWorkoutCard({
         {/* Divider */}
         <div className="border-t border-slate-800/40 my-1" />
 
-        {/* ④ 실행 정보 (다음 운동, 추천 시점) */}
+        {/* ④ 실행 정보 (예상 다음 세션, 예상 시점) */}
         {hasExecutionDetails && (
           <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs py-1">
             <div className="flex flex-col justify-center">
@@ -147,328 +311,71 @@ export function RecommendedWorkoutCard({
               <span className="font-extrabold text-slate-100 text-sm sm:text-base leading-tight mt-0.5">{nextUp}</span>
             </div>
             <div className="flex flex-col justify-center">
-              <span className="text-slate-500 font-bold text-[9px] uppercase tracking-wider">추천 시점</span>
+              <span className="text-slate-500 font-bold text-[9px] uppercase tracking-wider">예상 시점</span>
               <span className="font-extrabold text-slate-100 text-sm sm:text-base leading-tight mt-0.5">{nextRecommendationDisplay}</span>
             </div>
           </div>
         )}
 
-        {/* 대표 동작 태그 */}
-        <div className="flex flex-wrap gap-1.5 pt-1">
-          {actionTags.slice(0, 4).map((tag, idx) => (
-            <span key={idx} className="text-[10px] bg-slate-950 border border-slate-850 px-2.5 py-1 rounded-lg text-slate-400 font-bold tracking-tight">
-              {tag}
-            </span>
-          ))}
-        </div>
-
-        {/* ⑥ 추천 후보 (Accordion) */}
-        {recommendation.topCandidates && recommendation.topCandidates.length > 0 && (
-          <div className="space-y-3">
-            <button
-              type="button"
-              onClick={() => setShowTopCandidates(!showTopCandidates)}
-              className="w-full flex items-center justify-between py-2.5 px-3.5 bg-slate-950/40 hover:bg-slate-950/70 border border-slate-800/80 rounded-xl text-xs text-slate-400 hover:text-white transition-all cursor-pointer font-bold"
-            >
-              <div className="flex items-center gap-2">
-                <Compass className="w-3.5 h-3.5 text-emerald-400" />
-                <span>후보 운동</span>
+        {/* 회복 가이드 (Rest 상태) vs 대표 동작 태그 (Train 상태) */}
+        {isRest ? (
+          actionTags.length > 0 && (
+            <div className="space-y-1.5 pt-0.5">
+              <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">
+                회복 가이드
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {actionTags.slice(0, 4).map((tag, idx) => (
+                  <span 
+                    key={idx} 
+                    className="text-[10px] bg-slate-950/60 border border-slate-850/80 px-2.5 py-1 rounded-lg text-slate-400 font-medium tracking-tight"
+                  >
+                    {tag}
+                  </span>
+                ))}
               </div>
-              {showTopCandidates ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
-
-            <AnimatePresence>
-              {showTopCandidates && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.25 }}
-                  className="overflow-hidden space-y-2 pt-1"
-                >
-                  {recommendation.topCandidates.map((candidate, idx) => {
-                    const isSelected = candidate.lift === recommendation.mainLift;
-                    return (
-                      <div 
-                        key={candidate.lift} 
-                        className={`p-3 rounded-xl border transition-all duration-200 ${
-                          isSelected 
-                            ? 'bg-emerald-950/15 border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.06)]' 
-                            : 'bg-slate-950/40 border-slate-850/60 hover:border-slate-800'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className={`text-xs font-extrabold font-mono ${isSelected ? 'text-emerald-400' : 'text-slate-500'}`}>
-                              {idx === 0 ? '①' : idx === 1 ? '②' : '③'}
-                            </span>
-                            <span className={`text-xs font-black ${isSelected ? 'text-emerald-400' : 'text-slate-300'}`}>
-                              {candidate.lift}
-                            </span>
-                            {isSelected && (
-                              <span className="text-[8px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/35 px-1.5 py-0.5 rounded-md font-bold tracking-tight">
-                                최적 추천
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* 선택되지 않은 사유 한 줄 추가 (2, 3위만 해당) */}
-                        {!isSelected && candidate.rejectionReason && (
-                          <div className="text-[10px] text-slate-400 font-semibold mt-1.5 pl-3 border-l border-slate-800 flex items-start gap-1">
-                            <span className="text-indigo-400 shrink-0">→</span>
-                            <span>{candidate.rejectionReason}</span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
-
-        {/* ⑦ 오늘 추천 이유 (Accordion) */}
-        {recommendation.reasons && recommendation.reasons.length > 0 && (
-          <div className="space-y-3">
-            <button
-              type="button"
-              onClick={() => setShowReasons(!showReasons)}
-              className="w-full flex items-center justify-between py-2.5 px-3.5 bg-slate-950/40 hover:bg-slate-950/70 border border-slate-800/80 rounded-xl text-xs text-slate-400 hover:text-white transition-all cursor-pointer font-bold"
-            >
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                <span>추천 이유</span>
-              </div>
-              {showReasons ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
-            <AnimatePresence>
-              {showReasons && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.25 }}
-                  className="overflow-hidden"
-                >
-                  <div className="bg-slate-950/60 border border-slate-800/60 rounded-xl p-3.5 space-y-2">
-                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">분석 기반 추천 사유</span>
-                    <div className="space-y-1.5">
-                      {recommendation.reasons.map((reason, idx) => (
-                        <div key={idx} className="text-xs text-slate-300 flex items-start gap-2 font-medium">
-                          <span className="text-emerald-400 font-bold shrink-0 mt-0.5">•</span>
-                          <span>{reason.replace(/^✓\s*/, '')}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
-
-        {/* ⑧ 평가 기준 (Accordion) */}
-        <div className="space-y-3">
-          <button
-            type="button"
-            onClick={() => setShowScores(!showScores)}
-            className="w-full flex items-center justify-between py-2.5 px-3.5 bg-slate-950/40 hover:bg-slate-950/70 border border-slate-800/80 rounded-xl text-xs text-slate-400 hover:text-white transition-all cursor-pointer font-bold"
-          >
-            <div className="flex items-center gap-2">
-              <BarChart2 className="w-3.5 h-3.5 text-indigo-400" />
-              <span>평가 기준</span>
             </div>
-            {showScores ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </button>
+          )
+        ) : (
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {actionTags.slice(0, 4).map((tag, idx) => (
+              <span key={idx} className="text-[10px] bg-slate-950 border border-slate-850 px-2.5 py-1 rounded-lg text-slate-400 font-bold tracking-tight">
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
 
-          <AnimatePresence>
-            {showScores && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.25 }}
-                className="overflow-hidden space-y-4 pt-1"
-              >
-                <div className="bg-slate-950/80 border border-slate-850 rounded-xl p-4 space-y-4">
-                  {/* 평가 지표 가중치 요약 */}
-                  <div>
-                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 justify-between mb-2">
-                      <span>평가 가중치</span>
-                      <span className="text-indigo-400 font-medium">합계 100점 만점</span>
-                    </div>
-                    <div className="grid grid-cols-5 gap-1 text-[9px] text-center text-slate-400 bg-slate-900/60 p-2 rounded-lg border border-slate-800/40 font-semibold font-sans">
-                      <div>
-                        <div className="text-slate-200">회복도</div>
-                        <div className="text-indigo-400 font-extrabold mt-0.5">35%</div>
-                      </div>
-                      <div>
-                        <div className="text-slate-200">우선순위</div>
-                        <div className="text-indigo-400 font-extrabold mt-0.5">20%</div>
-                      </div>
-                      <div>
-                        <div className="text-slate-200">목표간극</div>
-                        <div className="text-indigo-400 font-extrabold mt-0.5">15%</div>
-                      </div>
-                      <div>
-                        <div className="text-slate-200">빈도균형</div>
-                        <div className="text-indigo-400 font-extrabold mt-0.5">15%</div>
-                      </div>
-                      <div>
-                        <div className="text-slate-200">피로도</div>
-                        <div className="text-indigo-400 font-extrabold mt-0.5">10%</div>
-                      </div>
-                    </div>
-                  </div>
+        {/* Accordion Ordering: Rest: [추천 이유 -> 평가 기준 -> 후보 운동] / Train: [후보 운동 -> 추천 이유 -> 평가 기준] */}
+        {isRest ? (
+          <>
+            {renderReasonsAccordion()}
+            {renderScoresAccordion()}
+            {renderCandidatesAccordion()}
+          </>
+        ) : (
+          <>
+            {renderCandidatesAccordion()}
+            {renderReasonsAccordion()}
+            {renderScoresAccordion()}
+          </>
+        )}
+      </div>
 
-                  {/* [6. 점수 시각화 단순화] - 선택된 종목(1위)만 5개 점수를 시각화 */}
-                  {recommendation.allScores?.[recommendation.mainLift] && (
-                    <div className="space-y-3">
-                      <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider block">
-                        🏆 {recommendation.mainLift} 5대 핵심 지표 분석
-                      </span>
-                      {(() => {
-                        const item = recommendation.allScores[recommendation.mainLift];
-                        return (
-                          <div className="bg-slate-900/40 border border-slate-850/60 p-3 rounded-xl space-y-3">
-                            <div className="space-y-1">
-                              <div className="flex justify-between items-center text-[10px]">
-                                <span className="text-slate-400 font-bold">회복도 및 수행 간격 (35점 만점)</span>
-                                <span className="text-emerald-400 font-mono font-bold">{item.recovery}점 <span className="text-slate-600 font-normal">/ 35</span></span>
-                              </div>
-                              <div className="bg-slate-950 h-1.5 rounded-full overflow-hidden">
-                                <div 
-                                  className="h-full rounded-full bg-emerald-500" 
-                                  style={{ width: `${(item.recovery / 35) * 100}%` }}
-                                />
-                              </div>
-                            </div>
-
-                            <div className="space-y-1">
-                              <div className="flex justify-between items-center text-[10px]">
-                                <span className="text-slate-400 font-bold">미수행 일자 우선순위 (20점 만점)</span>
-                                <span className="text-emerald-400 font-mono font-bold">{item.priority}점 <span className="text-slate-600 font-normal">/ 20</span></span>
-                              </div>
-                              <div className="bg-slate-950 h-1.5 rounded-full overflow-hidden">
-                                <div 
-                                  className="h-full rounded-full bg-emerald-500" 
-                                  style={{ width: `${(item.priority / 20) * 100}%` }}
-                                />
-                              </div>
-                            </div>
-
-                            <div className="space-y-1">
-                              <div className="flex justify-between items-center text-[10px]">
-                                <span className="text-slate-400 font-bold">목표 중량 대비 간극 (15점 만점)</span>
-                                <span className="text-emerald-400 font-mono font-bold">{item.goalGap}점 <span className="text-slate-600 font-normal">/ 15</span></span>
-                              </div>
-                              <div className="bg-slate-950 h-1.5 rounded-full overflow-hidden">
-                                <div 
-                                  className="h-full rounded-full bg-emerald-500" 
-                                  style={{ width: `${(item.goalGap / 15) * 100}%` }}
-                                />
-                              </div>
-                            </div>
-
-                            <div className="space-y-1">
-                              <div className="flex justify-between items-center text-[10px]">
-                                <span className="text-slate-400 font-bold">4주 부위별 훈련 빈도 균형 (15점 만점)</span>
-                                <span className="text-emerald-400 font-mono font-bold">{item.frequency}점 <span className="text-slate-600 font-normal">/ 15</span></span>
-                              </div>
-                              <div className="bg-slate-950 h-1.5 rounded-full overflow-hidden">
-                                <div 
-                                  className="h-full rounded-full bg-emerald-500" 
-                                  style={{ width: `${(item.frequency / 15) * 100}%` }}
-                                />
-                              </div>
-                            </div>
-
-                            <div className="space-y-1">
-                              <div className="flex justify-between items-center text-[10px]">
-                                <span className="text-slate-400 font-bold">피로 저해 방지 적합도 (10점 만점)</span>
-                                <span className="text-emerald-400 font-mono font-bold">{item.fatigue}점 <span className="text-slate-600 font-normal">/ 10</span></span>
-                              </div>
-                              <div className="bg-slate-950 h-1.5 rounded-full overflow-hidden">
-                                <div 
-                                  className="h-full rounded-full bg-emerald-500" 
-                                  style={{ width: `${(item.fatigue / 10) * 100}%` }}
-                                />
-                              </div>
-                            </div>
-
-                            {item.rotationBonus && item.rotationBonus > 0 ? (
-                              <div className="space-y-1">
-                                <div className="flex justify-between items-center text-[10px]">
-                                  <span className="text-amber-400 font-bold">4대 종목 순환 가산 보너스 (+8점)</span>
-                                  <span className="text-amber-400 font-mono font-bold">+{item.rotationBonus}점</span>
-                                </div>
-                                <div className="bg-slate-950 h-1.5 rounded-full overflow-hidden">
-                                  <div className="h-full rounded-full bg-amber-400 w-full" />
-                                </div>
-                              </div>
-                            ) : null}
-
-                            {item.interferencePenalty && item.interferencePenalty > 0 ? (
-                              <div className="space-y-1">
-                                <div className="flex justify-between items-center text-[10px]">
-                                  <span className="text-rose-400 font-bold">세션 간섭 감점 (피로 누적)</span>
-                                  <span className="text-rose-400 font-mono font-bold">-{item.interferencePenalty}점</span>
-                                </div>
-                                <div className="bg-slate-950 h-1.5 rounded-full overflow-hidden">
-                                  <div 
-                                    className="h-full rounded-full bg-rose-500" 
-                                    style={{ width: `${Math.min(100, (item.interferencePenalty / 50) * 100)}%` }}
-                                  />
-                                </div>
-                              </div>
-                            ) : null}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+      {/* 6. CTA Button (Aligned to bottom right for Train state only) */}
+      {!isRest && (
+        <div className="mt-6 flex justify-end">
+          <motion.button 
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={handleStart}
+            className="flex items-center gap-1.5 text-xs font-bold px-4 py-2.5 rounded-xl transition-all cursor-pointer bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/15 hover:shadow-indigo-600/25"
+          >
+            <span>운동 시작</span>
+            <ChevronRight className="w-3.5 h-3.5 font-bold" />
+          </motion.button>
         </div>
-      </div>
-
-      {/* 6. CTA Button (Aligned beautifully to bottom right) */}
-      <div className="mt-6 flex justify-end">
-        <motion.button 
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={handleStart}
-          className={`flex items-center gap-1.5 text-xs font-bold px-4 py-2.5 rounded-xl transition-all cursor-pointer ${
-            isRest 
-              ? isRestCompleted
-                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.05)]'
-                : 'bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700/50'
-              : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/15 hover:shadow-indigo-600/25'
-          }`}
-        >
-          {isRest ? (
-            <>
-              {isRestCompleted ? (
-                <>
-                  <Check className="w-3.5 h-3.5 stroke-[3]" />
-                  <span>오늘 회복 완료</span>
-                </>
-              ) : (
-                <span>회복 완료하기</span>
-              )}
-            </>
-          ) : (
-            <>
-              <span>운동 시작</span>
-              <ChevronRight className="w-3.5 h-3.5 font-bold" />
-            </>
-          )}
-        </motion.button>
-      </div>
+      )}
     </motion.div>
   );
 }

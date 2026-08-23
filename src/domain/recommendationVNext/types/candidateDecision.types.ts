@@ -28,6 +28,7 @@ import { CandidateReadinessEvidence } from './candidateReadiness.types';
 import { CandidateTrainingNeedEvidence } from './candidateTrainingNeed.types';
 import { CandidateProgressOpportunityEvidence } from './candidateProgressOpportunity.types';
 import { EvaluationContext } from './residualStressTrace.types';
+import { RestDecisionEvidence } from './restDecision.types';
 
 // =========================================================================
 // 1. Decision Taxonomy
@@ -186,6 +187,8 @@ export type RestDecisionCategory =
   | 'completed-session-boundary'
   | 'no-viable-candidates'
   | 'hardblocked-boundary'
+  | 'systemic-recovery-indicated'
+  | 'session-level-rest-supported'
   | 'elective-rest';
 
 /**
@@ -214,6 +217,9 @@ export interface TodayDecision {
   /** All evaluated candidates in stable deterministic order */
   readonly allCandidates: readonly CandidateDecisionEvidence[];
 
+  /** Lossless session-level rest decision evidence */
+  readonly restDecisionEvidence?: RestDecisionEvidence;
+
   /** Audit trail of synthesis rules evaluated */
   readonly synthesisAuditTrail: readonly string[];
 }
@@ -230,4 +236,5 @@ export interface CandidateDecisionEvaluationSet {
   readonly deferredCount: number;
   readonly unsupportedCount: number;
   readonly todayDecision: TodayDecision;
+  readonly restDecisionEvidence: RestDecisionEvidence;
 }

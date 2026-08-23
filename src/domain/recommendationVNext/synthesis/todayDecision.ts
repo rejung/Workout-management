@@ -34,6 +34,8 @@ import {
   sortCandidatesByPreference,
 } from './candidateSynthesis';
 import { DEFAULT_FOUNDATION_CANDIDATE_IDS } from '../readiness/candidateReadiness';
+import { evaluateSessionTemporalEligibility } from '../temporal/temporalEligibility';
+import { deriveRestDecisionEvidence } from '../rest/restDecisionEvidence';
 
 /**
  * Evaluates full CandidateDecisionEvaluationSet and derives TodayDecision (train vs rest).
@@ -104,21 +106,34 @@ export function evaluateCandidateDecisionSet(
   );
 
   // -------------------------------------------------------------------------
+  // Derivation of Session-Level Rest Decision Evidence (CU4.3)
+  // -------------------------------------------------------------------------
+  const restDecisionEvidence = deriveRestDecisionEvidence(
+    evaluationContext,
+    allHistoricalSessions,
+    allDimensionResidualStates,
+    candidateDecisions,
+    runningSessions
+  );
+
+  // -------------------------------------------------------------------------
   // Derivation of TodayDecision (Rest vs Train)
   // -------------------------------------------------------------------------
   const auditTrail: string[] = [];
   let todayDecision: TodayDecision;
 
-  // 1. Check if a workout session was already completed on the current evaluation calendar date
+  // 1. Check if a workout session was already completed on the current evaluation calendar date (prior to evaluation instant)
   const completedTodaySessions: (StressMagnitudeInput | CanonicalRunningSession)[] = [];
   for (const s of allHistoricalSessions) {
-    if (s.date === evaluationContext.evaluationCalendarDate) {
+    const tempCheck = evaluateSessionTemporalEligibility(s, evaluationContext);
+    if (tempCheck.eligibility === 'eligible-same-day-exact') {
       completedTodaySessions.push(s);
     }
   }
   if (runningSessions) {
     for (const r of runningSessions) {
-      if (r.date === evaluationContext.evaluationCalendarDate) {
+      const tempCheck = evaluateSessionTemporalEligibility(r, evaluationContext);
+      if (tempCheck.eligibility === 'eligible-same-day-exact') {
         completedTodaySessions.push(r);
       }
     }
@@ -145,6 +160,72 @@ export function evaluateCandidateDecisionSet(
       viableAlternatives,
       deferredCandidates,
       allCandidates: sortedCandidates,
+      restDecisionEvidence,
+      synthesisAuditTrail: Object.freeze(auditTrail),
+    });
+  } else if (
+    unsupportedCandidates.length === sortedCandidates.length &&
+    sortedCandidates.length > 0 &&
+    sortedCandidates.every((c) => c.hardConstraintStatus.isHardBlocked)
+  ) {
+    auditTrail.push(
+      `All ${candidateIds.length} candidate exercises are blocked by hard safety constraints. Deriving REST under 'hardblocked-boundary'.`
+    );
+
+    todayDecision = Object.freeze({
+      kind: 'rest',
+      evaluationContext,
+      summaryHeadline: 'Recommended Session: Rest / Safety Boundary.',
+      restCategory: 'hardblocked-boundary',
+      restRationale: 'All candidate exercises are contraindicated by active hard constraints or injury boundaries.',
+      preferredCandidates,
+      viableAlternatives,
+      deferredCandidates,
+      allCandidates: sortedCandidates,
+      restDecisionEvidence,
+      synthesisAuditTrail: Object.freeze(auditTrail),
+    });
+  } else if (restDecisionEvidence.candidateLandscape.allCandidatesDeferredOrUnsupported) {
+    const deferredReasons = deferredCandidates
+      .map((c) => `${c.candidateExerciseName}: ${c.decisionReasons[0] || 'Deferred'}`)
+      .join('; ');
+
+    auditTrail.push(
+      `All ${candidateIds.length} candidate exercises are deferred or unsupported with no session completed today. Deriving REST under 'no-viable-candidates'.`
+    );
+
+    todayDecision = Object.freeze({
+      kind: 'rest',
+      evaluationContext,
+      summaryHeadline: 'Recommended Session: Rest / Recovery Day.',
+      restCategory: 'no-viable-candidates',
+      restRationale: `All evaluated candidate exercises are currently constrained by acute residual stress or were recently addressed (${deferredReasons}). No viable exercise stimulus is available.`,
+      preferredCandidates,
+      viableAlternatives,
+      deferredCandidates,
+      allCandidates: sortedCandidates,
+      restDecisionEvidence,
+      synthesisAuditTrail: Object.freeze(auditTrail),
+    });
+  } else if (
+    restDecisionEvidence.restSupportClass === 'rest-supported' &&
+    preferredCandidates.length === 0
+  ) {
+    auditTrail.push(
+      'RestDecisionEvidence actively supports Rest under elevated training density / broad systemic residual with no preferred candidates.'
+    );
+
+    todayDecision = Object.freeze({
+      kind: 'rest',
+      evaluationContext,
+      summaryHeadline: 'Recommended Session: Systemic Recovery / Active Rest.',
+      restCategory: 'systemic-recovery-indicated',
+      restRationale: 'Elevated training density and broad residual stress across multiple movement dimensions indicate an active recovery day is supported.',
+      preferredCandidates,
+      viableAlternatives,
+      deferredCandidates,
+      allCandidates: sortedCandidates,
+      restDecisionEvidence,
       synthesisAuditTrail: Object.freeze(auditTrail),
     });
   } else if (preferredCandidates.length > 0) {
@@ -162,6 +243,7 @@ export function evaluateCandidateDecisionSet(
       viableAlternatives,
       deferredCandidates,
       allCandidates: sortedCandidates,
+      restDecisionEvidence,
       synthesisAuditTrail: Object.freeze(auditTrail),
     });
   } else if (viableAlternatives.length > 0) {
@@ -179,54 +261,23 @@ export function evaluateCandidateDecisionSet(
       viableAlternatives,
       deferredCandidates,
       allCandidates: sortedCandidates,
+      restDecisionEvidence,
       synthesisAuditTrail: Object.freeze(auditTrail),
     });
   } else {
-    // All candidates deferred or unsupported with NO session completed today
-    const allHardBlocked =
-      unsupportedCandidates.length === sortedCandidates.length &&
-      sortedCandidates.length > 0 &&
-      sortedCandidates.every((c) => c.hardConstraintStatus.isHardBlocked);
-
-    if (allHardBlocked) {
-      auditTrail.push(
-        `All ${candidateIds.length} candidate exercises are blocked by hard safety constraints. Deriving REST under 'hardblocked-boundary'.`
-      );
-
-      todayDecision = Object.freeze({
-        kind: 'rest',
-        evaluationContext,
-        summaryHeadline: 'Recommended Session: Rest / Safety Boundary.',
-        restCategory: 'hardblocked-boundary',
-        restRationale: 'All candidate exercises are contraindicated by active hard constraints or injury boundaries.',
-        preferredCandidates,
-        viableAlternatives,
-        deferredCandidates,
-        allCandidates: sortedCandidates,
-        synthesisAuditTrail: Object.freeze(auditTrail),
-      });
-    } else {
-      const deferredReasons = deferredCandidates
-        .map((c) => `${c.candidateExerciseName}: ${c.decisionReasons[0] || 'Deferred'}`)
-        .join('; ');
-
-      auditTrail.push(
-        `All ${candidateIds.length} candidate exercises are deferred or unsupported with no session completed today. Deriving REST under 'no-viable-candidates'.`
-      );
-
-      todayDecision = Object.freeze({
-        kind: 'rest',
-        evaluationContext,
-        summaryHeadline: 'Recommended Session: Rest / Recovery Day.',
-        restCategory: 'no-viable-candidates',
-        restRationale: `All evaluated candidate exercises are currently constrained by acute residual stress or were recently addressed (${deferredReasons}). No viable exercise stimulus is available.`,
-        preferredCandidates,
-        viableAlternatives,
-        deferredCandidates,
-        allCandidates: sortedCandidates,
-        synthesisAuditTrail: Object.freeze(auditTrail),
-      });
-    }
+    todayDecision = Object.freeze({
+      kind: 'rest',
+      evaluationContext,
+      summaryHeadline: 'Recommended Session: Rest / Recovery Day.',
+      restCategory: 'no-viable-candidates',
+      restRationale: 'No viable exercise candidates available.',
+      preferredCandidates,
+      viableAlternatives,
+      deferredCandidates,
+      allCandidates: sortedCandidates,
+      restDecisionEvidence,
+      synthesisAuditTrail: Object.freeze(auditTrail),
+    });
   }
 
   return Object.freeze({
@@ -238,5 +289,6 @@ export function evaluateCandidateDecisionSet(
     deferredCount: deferredCandidates.length,
     unsupportedCount: unsupportedCandidates.length,
     todayDecision,
+    restDecisionEvidence,
   });
 }

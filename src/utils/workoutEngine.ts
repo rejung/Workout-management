@@ -6,7 +6,7 @@
 import { WorkoutLog, Exercise } from '../types';
 import { getLocalDateString, getFriendlyRecommendationDate } from './dateUtils';
 import { getLast28DaysRange } from './dateRange';
-import { getNextRecommendation as getNextRecFromEngine } from './recommendationEngine';
+import { getProductionRecommendation } from '../domain/recommendationVNext/production/productionRecommendationService';
 import { calculateMileage, calculateRunningPB, isRunningExercise } from '../domain/cardio';
 
 export interface WeightLog {
@@ -705,10 +705,56 @@ export function getBestWorkset(
   };
 }
 
-export type { RecommendationResult, MainLift as RecommendationMainLift } from './recommendationEngine';
+export type { RecommendationResult, MainLift as RecommendationMainLift, MainLift } from '../domain/recommendationVNext/types/recommendationPresentation.types';
 
-// 7. Next Recommended Workout calculation
-export function getNextRecommendation(logs: WorkoutLog[], goalSettings?: any): any {
-  return getNextRecFromEngine(logs, goalSettings);
+/**
+  * Helper to identify the main lift of a workout log based on exercises and routine metadata
+  */
+export function getMainLiftOfLog(log: WorkoutLog): '벤치프레스' | 'OHP' | '데드리프트' | '바벨 로우' | '스쿼트' | '러닝' | null {
+  const routineId = log.routineId || '';
+  const rName = (log.routineName || '').toLowerCase();
+  if (routineId === 'routine-bench-press' || rName.includes('bench') || rName.includes('벤치프레스')) return '벤치프레스';
+  if (routineId === 'routine-ohp' || rName.includes('ohp') || rName.includes('오버헤드 프레스')) return 'OHP';
+  if (routineId === 'routine-deadlift' || rName.includes('dead') || rName.includes('데드리프트')) return '데드리프트';
+  if (routineId === 'routine-barbell-row' || rName.includes('barbell row') || rName.includes('바벨 로우') || rName.includes('바벨로우')) return '바벨 로우';
+  if (routineId === 'routine-squat' || rName.includes('squat') || rName.includes('스쿼트')) return '스쿼트';
+  if (routineId === 'routine-cardio' || rName.includes('run') || rName.includes('러닝') || rName.includes('유산소') || rName.includes('cardio') || rName.includes('트레드밀')) return '러닝';
+
+  for (const ex of log.exercises) {
+    const eName = ex.exerciseName.toLowerCase();
+    if (eName.includes('bench') || eName.includes('벤치프레스')) return '벤치프레스';
+    if (eName.includes('ohp') || eName.includes('오버헤드프레스') || eName.includes('오버헤드 프레스') || eName.includes('overhead press')) return 'OHP';
+    if (eName.includes('dead') || eName.includes('데드리프트')) return '데드리프트';
+    if (eName.includes('barbell row') || eName.includes('바벨 로우') || eName.includes('바벨로우')) return '바벨 로우';
+    if (eName.includes('squat') || eName.includes('스쿼트')) return '스쿼트';
+    if (ex.category === 'Cardio' || eName.includes('run') || eName.includes('러닝') || eName.includes('달리기') || eName.includes('treadmill') || eName.includes('트레드밀')) return '러닝';
+  }
+  return null;
+}
+
+/**
+ * Compares two WorkoutLogs in descending chronological order (newest first).
+ * Primary sort key: date (YYYY-MM-DD)
+ * Secondary sort key: startTime (HH:MM)
+ */
+export function compareWorkoutLogsChronologicalDesc(a: WorkoutLog, b: WorkoutLog): number {
+  const dateDiff = b.date.localeCompare(a.date);
+  if (dateDiff !== 0) {
+    return dateDiff;
+  }
+
+  const timeA = a.startTime || '';
+  const timeB = b.startTime || '';
+  const timeDiff = timeB.localeCompare(timeA);
+  if (timeDiff !== 0) {
+    return timeDiff;
+  }
+
+  return 0;
+}
+
+// 7. Next Recommended Workout calculation (Production VNext Sole Engine)
+export function getNextRecommendation(logs: WorkoutLog[], goalSettings?: any) {
+  return getProductionRecommendation(logs, goalSettings);
 }
 
