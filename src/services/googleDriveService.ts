@@ -10,13 +10,59 @@ import {
   GoogleAuthProvider,
   onAuthStateChanged,
   User,
-  Auth
+  Auth,
+  setPersistence,
+  browserLocalPersistence
 } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 // Initialize firebase app if not already initialized
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth: Auth = getAuth(app);
+
+// Explicit Firebase Auth browser local persistence
+let persistenceInitPromise: Promise<void> | null = null;
+export const ensureAuthPersistence = async (): Promise<void> => {
+  if (!persistenceInitPromise) {
+    persistenceInitPromise = setPersistence(auth, browserLocalPersistence).catch((err) => {
+      console.warn('Firebase setPersistence warning:', err);
+    });
+  }
+  return persistenceInitPromise;
+};
+
+// Initialize persistence immediately in browser
+if (typeof window !== 'undefined') {
+  ensureAuthPersistence();
+}
+
+// Drive Backup Preference persistence key
+export const DRIVE_BACKUP_ENABLED_STORAGE_KEY = 'wms.driveBackupEnabled';
+
+export const getDriveBackupPreference = (): boolean => {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return window.localStorage.getItem(DRIVE_BACKUP_ENABLED_STORAGE_KEY) === 'true';
+    }
+  } catch (e) {
+    console.warn('Error reading drive backup preference:', e);
+  }
+  return false;
+};
+
+export const setDriveBackupPreference = (enabled: boolean): void => {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      if (enabled) {
+        window.localStorage.setItem(DRIVE_BACKUP_ENABLED_STORAGE_KEY, 'true');
+      } else {
+        window.localStorage.removeItem(DRIVE_BACKUP_ENABLED_STORAGE_KEY);
+      }
+    }
+  } catch (e) {
+    console.warn('Error writing drive backup preference:', e);
+  }
+};
 
 // Minimum Scope Principle:
 // 'https://www.googleapis.com/auth/drive.file' grants per-file access to files/folders created by this app.
@@ -34,14 +80,15 @@ export const createGoogleDriveProvider = (promptConsent = false): GoogleAuthProv
   return p;
 };
 
-// State Model: Disconnected, Signed in without Drive, Connected, Expired, Revoked, Error
+// State Model: Disconnected, Signed in without Drive, Connected, Expired, Revoked, Error, Recovery Required
 export type DriveAuthState =
   | 'signed-out'
   | 'signed-in-drive-not-connected'
   | 'drive-connected'
   | 'drive-authorization-expired'
   | 'drive-permission-revoked'
-  | 'drive-error';
+  | 'drive-error'
+  | 'drive-auth-recovery-required';
 
 export type DriveErrorCode =
   | 'AUTH_EXPIRED'          // 401
@@ -80,6 +127,90 @@ export const getAccessToken = async (): Promise<string | null> => {
 export const setCachedAccessToken = (token: string | null): void => {
   cachedAccessToken = token;
 };
+
+export interface EnsureDriveAuthOptions {
+  /**
+   * If true, allows showing interactive popup to recover authorization when token is missing/expired.
+   * Defaults to false (silent check only; prevents unexpected popups on page load/render).
+   */
+  interactive?: boolean;
+  /**
+   * If true, explicitly tests Drive API access via lightweight folder check.
+   */
+  forceVerify?: boolean;
+}
+
+/**
+ * Drive Authorization Recovery Gateway
+ *
+ * Centralizes all Drive authorization checks and recovery:
+ * 1. Checks Firebase user authentication
+ * 2. Checks driveBackupEnabled preference
+ * 3. Checks in-memory cachedAccessToken
+ * 4. Verifies token validity if needed
+ * 5. Returns valid token or recovers if allowed
+ * 6. Never resets driveBackupEnabled on token loss or transient errors
+ */
+export async function ensureDriveAuthorization(options: EnsureDriveAuthOptions = {}): Promise<string> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new DriveApiError(
+      'UNAUTHORIZED',
+      401,
+      '로그인이 필요합니다. Google 계정을 먼저 연동해 주세요.'
+    );
+  }
+
+  const isPreferenceEnabled = getDriveBackupPreference();
+
+  // Case 1: Token exists in memory
+  if (cachedAccessToken) {
+    if (options.forceVerify) {
+      try {
+        await verifyDriveAccess(cachedAccessToken);
+        return cachedAccessToken;
+      } catch (err: any) {
+        if (err instanceof DriveApiError && err.code === 'AUTH_EXPIRED') {
+          // Token expired, clear memory cache only (preference is preserved)
+          cachedAccessToken = null;
+        } else {
+          // PERMISSION_REVOKED or NETWORK_ERROR -> bubble up
+          throw err;
+        }
+      }
+    } else {
+      return cachedAccessToken;
+    }
+  }
+
+  // Case 2: Token is missing from memory (or expired above)
+  if (options.interactive) {
+    const signInResult = await googleSignIn(false);
+    if (!signInResult?.accessToken) {
+      throw new DriveApiError(
+        'AUTH_EXPIRED',
+        401,
+        'Google Drive 인증 복구에 실패했습니다. 다시 연결해 주세요.'
+      );
+    }
+    return signInResult.accessToken;
+  }
+
+  // Case 3: Silent check when token is missing
+  if (isPreferenceEnabled) {
+    throw new DriveApiError(
+      'AUTH_EXPIRED',
+      401,
+      'Google Drive 인증 복구가 필요합니다. 드라이브를 다시 연결해 주세요.'
+    );
+  } else {
+    throw new DriveApiError(
+      'UNAUTHORIZED',
+      401,
+      'Google Drive 백업이 활성화되어 있지 않습니다.'
+    );
+  }
+}
 
 export interface GoogleDriveFile {
   id: string;
@@ -120,6 +251,7 @@ export async function handleDriveApiResponse(res: Response, contextAction: strin
   }
 
   if (res.status === 401) {
+    cachedAccessToken = null;
     throw new DriveApiError(
       'AUTH_EXPIRED',
       401,
@@ -241,6 +373,7 @@ export interface AuthStateListenerCallbacks {
   onDriveAuthExpired?: (user: User) => void;
   onDrivePermissionRevoked?: (user: User) => void;
   onDriveError?: (user: User, error: DriveApiError) => void;
+  onDriveAuthRecoveryRequired?: (user: User) => void;
 }
 
 /**
@@ -262,9 +395,21 @@ export const initAuth = (callbacks: AuthStateListenerCallbacks | ((user: User, t
 
     // User is authenticated in Firebase
     if (!cachedAccessToken) {
-      // Token is not in memory -> Signed in, but Drive is not yet connected
-      if (cb.onSignedInNoDrive) {
-        cb.onSignedInNoDrive(user);
+      // Check if user previously had Drive backup enabled
+      const isDriveEnabled = getDriveBackupPreference();
+      if (isDriveEnabled) {
+        // Drive backup is enabled in preferences, but memory access token is missing (e.g. after page refresh)
+        // Needs authorization recovery, do NOT revert to signed-in-drive-not-connected!
+        if (cb.onDriveAuthRecoveryRequired) {
+          cb.onDriveAuthRecoveryRequired(user);
+        } else if (cb.onDriveAuthExpired) {
+          cb.onDriveAuthExpired(user);
+        }
+      } else {
+        // Token is not in memory and Drive was never connected/enabled
+        if (cb.onSignedInNoDrive) {
+          cb.onSignedInNoDrive(user);
+        }
       }
       return;
     }
@@ -272,6 +417,7 @@ export const initAuth = (callbacks: AuthStateListenerCallbacks | ((user: User, t
     // Token exists in memory -> verify Drive authorization
     try {
       await verifyDriveAccess(cachedAccessToken);
+      setDriveBackupPreference(true);
       if (cb.onSignedInWithDrive) {
         cb.onSignedInWithDrive(user, cachedAccessToken);
       }
@@ -322,6 +468,9 @@ export const googleSignIn = async (promptConsent = false): Promise<{
     // Verify Drive access immediately upon token acquisition
     await verifyDriveAccess(cachedAccessToken);
 
+    // Save drive backup preference as enabled
+    setDriveBackupPreference(true);
+
     return {
       user: result.user,
       accessToken: cachedAccessToken,
@@ -364,13 +513,14 @@ export const reconnectGoogleDrive = async (): Promise<{
 };
 
 /**
- * Logout from Firebase and clear in-memory token
+ * Logout from Firebase and clear in-memory token and clear preference (explicit user unlink)
  */
 export const logout = async (): Promise<void> => {
   try {
     await auth.signOut();
   } finally {
     cachedAccessToken = null;
+    setDriveBackupPreference(false);
   }
 };
 
@@ -425,9 +575,18 @@ export async function getOrCreateBackupFolder(accessToken: string): Promise<stri
  * Save snapshot file to Google Drive under the dedicated backups folder
  */
 export async function saveBackupToDrive(
-  accessToken: string,
-  snapshot: any
+  accessTokenOrSnapshot: string | any,
+  optionalSnapshot?: any
 ): Promise<GoogleDriveFile> {
+  const accessToken =
+    typeof accessTokenOrSnapshot === 'string'
+      ? accessTokenOrSnapshot
+      : await ensureDriveAuthorization();
+  const snapshot =
+    typeof accessTokenOrSnapshot === 'string'
+      ? optionalSnapshot
+      : accessTokenOrSnapshot;
+
   if (!accessToken) {
     throw new DriveApiError('UNAUTHORIZED', 401, 'Google Drive 인증 토큰이 없습니다.');
   }
@@ -476,12 +635,13 @@ export async function saveBackupToDrive(
 /**
  * List backups inside the dedicated backup folder
  */
-export async function listBackupsFromDrive(accessToken: string): Promise<GoogleDriveFile[]> {
-  if (!accessToken) {
+export async function listBackupsFromDrive(accessToken?: string): Promise<GoogleDriveFile[]> {
+  const token = accessToken || (await ensureDriveAuthorization());
+  if (!token) {
     throw new DriveApiError('UNAUTHORIZED', 401, 'Google Drive 인증 토큰이 없습니다.');
   }
 
-  const folderId = await getOrCreateBackupFolder(accessToken);
+  const folderId = await getOrCreateBackupFolder(token);
   const listUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(
     `'${folderId}' in parents and mimeType = 'application/json' and trashed = false`
   )}&fields=files(id,name,mimeType,createdTime,size)&orderBy=createdTime desc`;
@@ -489,7 +649,7 @@ export async function listBackupsFromDrive(accessToken: string): Promise<GoogleD
   const listRes = await safeDriveFetch(
     listUrl,
     {
-      headers: { Authorization: `Bearer ${accessToken}` }
+      headers: { Authorization: `Bearer ${token}` }
     },
     'listBackupsFromDrive'
   );
@@ -502,9 +662,14 @@ export async function listBackupsFromDrive(accessToken: string): Promise<GoogleD
  * Download snapshot file from Google Drive
  */
 export async function downloadBackupFromDrive(
-  accessToken: string,
-  fileId: string
+  accessTokenOrFileId: string,
+  optionalFileId?: string
 ): Promise<any> {
+  const accessToken = optionalFileId
+    ? accessTokenOrFileId
+    : await ensureDriveAuthorization();
+  const fileId = optionalFileId || accessTokenOrFileId;
+
   if (!accessToken) {
     throw new DriveApiError('UNAUTHORIZED', 401, 'Google Drive 인증 토큰이 없습니다.');
   }
@@ -528,9 +693,14 @@ export async function downloadBackupFromDrive(
  * Delete a backup file from Google Drive
  */
 export async function deleteBackupFromDrive(
-  accessToken: string,
-  fileId: string
+  accessTokenOrFileId: string,
+  optionalFileId?: string
 ): Promise<void> {
+  const accessToken = optionalFileId
+    ? accessTokenOrFileId
+    : await ensureDriveAuthorization();
+  const fileId = optionalFileId || accessTokenOrFileId;
+
   if (!accessToken) {
     throw new DriveApiError('UNAUTHORIZED', 401, 'Google Drive 인증 토큰이 없습니다.');
   }

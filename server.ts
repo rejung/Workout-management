@@ -8,6 +8,7 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import { parseServerPort, DEFAULT_SERVER_PORT } from './src/utils/serverPort';
+import { googleDriveAuthRouter } from './server/routes/googleDriveAuthRoutes';
 
 // Load environment variables
 dotenv.config();
@@ -24,6 +25,9 @@ async function startServer() {
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', time: new Date().toISOString() });
   });
+
+  // API Routes: Google Drive OAuth Contract (CU3.1)
+  app.use('/api/google-drive/auth', googleDriveAuthRouter);
 
   // Vite middleware setup or Static assets serving
   if (process.env.NODE_ENV !== 'production') {

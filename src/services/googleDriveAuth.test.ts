@@ -10,6 +10,11 @@ import {
   handleDriveApiResponse,
   safeDriveFetch,
   verifyDriveAccess,
+  ensureDriveAuthorization,
+  getDriveBackupPreference,
+  setDriveBackupPreference,
+  getAccessToken,
+  setCachedAccessToken,
   GoogleDriveFile,
   DRIVE_FILE_SCOPE
 } from './googleDriveService';
@@ -378,6 +383,82 @@ export async function runGoogleDriveReliabilitySuite(): Promise<DriveTestSuiteSu
     );
   } catch (err: any) {
     record('G12', 'Repeated 401', false, err.message);
+  }
+
+  // -------------------------------------------------------------
+  // G13. Drive Preference Persistence across token removal
+  // -------------------------------------------------------------
+  try {
+    setDriveBackupPreference(true);
+    setCachedAccessToken(null);
+    const prefRetained = getDriveBackupPreference() === true;
+    const tokenIsNull = (await getAccessToken()) === null;
+
+    record(
+      'G13',
+      'Preference Persistence (Token missing != Drive Disabled)',
+      prefRetained && tokenIsNull,
+      '메모리 토큰 소실 시에도 driveBackupEnabled preference 영속 유지 확인'
+    );
+  } catch (err: any) {
+    record('G13', 'Preference Persistence', false, err.message);
+  }
+
+  // -------------------------------------------------------------
+  // G14. ensureDriveAuthorization Gateway Error Classification
+  // -------------------------------------------------------------
+  try {
+    let authErrorCaught = false;
+    let authCodeCorrect = false;
+
+    try {
+      // Non-interactive call without active user
+      await ensureDriveAuthorization({ interactive: false });
+    } catch (err: any) {
+      if (err instanceof DriveApiError && (err.code === 'UNAUTHORIZED' || err.code === 'AUTH_EXPIRED')) {
+        authErrorCaught = true;
+        authCodeCorrect = true;
+      }
+    }
+
+    record(
+      'G14',
+      'Gateway Security (ensureDriveAuthorization throws without active session)',
+      authErrorCaught && authCodeCorrect,
+      '인증 정보 부재 시 안전한 DriveApiError throw 및 gateway 보안 무결성 확인'
+    );
+  } catch (err: any) {
+    record('G14', 'Gateway Security', false, err.message);
+  }
+
+  // -------------------------------------------------------------
+  // G15. 401 response clears in-memory token while retaining preference
+  // -------------------------------------------------------------
+  try {
+    setDriveBackupPreference(true);
+    setCachedAccessToken('temp_dummy_token');
+
+    const mock401Res = new Response(JSON.stringify({ error: { code: 401, message: 'Expired' } }), {
+      status: 401
+    });
+
+    try {
+      await handleDriveApiResponse(mock401Res, 'test401Clear');
+    } catch {
+      // expected
+    }
+
+    const tokenCleared = (await getAccessToken()) === null;
+    const prefStillTrue = getDriveBackupPreference() === true;
+
+    record(
+      'G15',
+      '401 Clears Memory Token but Retains Preference',
+      tokenCleared && prefStillTrue,
+      '401 만료 시 토큰 캐시만 초기화되고 백업 설정 preference는 유지됨 확인'
+    );
+  } catch (err: any) {
+    record('G15', '401 Clears Memory Token', false, err.message);
   }
 
   const passedCount = results.filter((r) => r.passed).length;

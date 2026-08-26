@@ -18,6 +18,8 @@ import {
   googleSignIn,
   reconnectGoogleDrive,
   logout,
+  ensureDriveAuthorization,
+  getDriveBackupPreference,
   saveBackupToDrive,
   listBackupsFromDrive,
   downloadBackupFromDrive,
@@ -123,6 +125,14 @@ export default function BackupManager({
         setDriveError(null);
         setIsGAuthLoading(false);
       },
+      onDriveAuthRecoveryRequired: (user) => {
+        setGUser(user);
+        setGToken(null);
+        setDriveAuthState('drive-auth-recovery-required');
+        setDriveBackups([]);
+        setDriveError(null);
+        setIsGAuthLoading(false);
+      },
       onSignedOut: () => {
         setGUser(null);
         setGToken(null);
@@ -155,16 +165,18 @@ export default function BackupManager({
     return () => unsubscribe();
   }, []);
 
-  const fetchDriveBackups = async (token: string) => {
+  const fetchDriveBackups = async (token?: string) => {
     setIsGDriveLoading(true);
     try {
-      const files = await listBackupsFromDrive(token);
+      const activeToken = token || (await ensureDriveAuthorization());
+      const files = await listBackupsFromDrive(activeToken);
       setDriveBackups(files);
       setDriveError(null);
     } catch (err: any) {
       if (err instanceof DriveApiError) {
         if (err.code === 'AUTH_EXPIRED') {
-          setDriveAuthState('drive-authorization-expired');
+          const isPref = getDriveBackupPreference();
+          setDriveAuthState(isPref ? 'drive-auth-recovery-required' : 'drive-authorization-expired');
           setGToken(null);
         } else if (err.code === 'PERMISSION_REVOKED') {
           setDriveAuthState('drive-permission-revoked');
@@ -196,7 +208,7 @@ export default function BackupManager({
     } catch (err: any) {
       if (err instanceof DriveApiError) {
         if (err.code === 'AUTH_EXPIRED') {
-          setDriveAuthState('drive-authorization-expired');
+          setDriveAuthState('drive-auth-recovery-required');
         } else if (err.code === 'PERMISSION_REVOKED') {
           setDriveAuthState('drive-permission-revoked');
         } else {
@@ -227,7 +239,7 @@ export default function BackupManager({
     } catch (err: any) {
       if (err instanceof DriveApiError) {
         if (err.code === 'AUTH_EXPIRED') {
-          setDriveAuthState('drive-authorization-expired');
+          setDriveAuthState('drive-auth-recovery-required');
         } else if (err.code === 'PERMISSION_REVOKED') {
           setDriveAuthState('drive-permission-revoked');
         } else {
@@ -258,15 +270,10 @@ export default function BackupManager({
   };
 
   const handleBackupToDrive = async () => {
-    const token = gToken || (await getAccessToken());
-    if (!token) {
-      setDriveAuthState('drive-authorization-expired');
-      setDriveError('Google Drive 인증 토큰이 유실되었습니다. 다시 연결해 주세요.');
-      return;
-    }
     setIsGDriveLoading(true);
     setDriveError(null);
     try {
+      const token = await ensureDriveAuthorization();
       const snapshot = snapshotService.createSnapshot(logs, weightLogs || [], routines, exercises);
       await saveBackupToDrive(token, snapshot);
       await fetchDriveBackups(token);
@@ -274,7 +281,8 @@ export default function BackupManager({
     } catch (err: any) {
       if (err instanceof DriveApiError) {
         if (err.code === 'AUTH_EXPIRED') {
-          setDriveAuthState('drive-authorization-expired');
+          const isPref = getDriveBackupPreference();
+          setDriveAuthState(isPref ? 'drive-auth-recovery-required' : 'drive-authorization-expired');
           setGToken(null);
         } else if (err.code === 'PERMISSION_REVOKED') {
           setDriveAuthState('drive-permission-revoked');
@@ -292,19 +300,13 @@ export default function BackupManager({
   };
 
   const handleRestoreFromDrive = async (file: GoogleDriveFile) => {
-    const token = gToken || (await getAccessToken());
-    if (!token) {
-      setDriveAuthState('drive-authorization-expired');
-      setDriveError('Google Drive 인증 토큰이 유실되었습니다. 다시 연결해 주세요.');
-      return;
-    }
-
     showConfirm(
       `주의: 구글 드라이브 백업 [${file.name}] 데이터로 전체 데이터를 복원하시겠습니까? 현재 기기에 있는 모든 운동 일지, 설정 및 설정된 목표 등이 이 백업 파일의 데이터로 완전히 대체되며, 이 작업은 취소할 수 없습니다.`,
       async () => {
         setIsGDriveLoading(true);
         setDriveError(null);
         try {
+          const token = await ensureDriveAuthorization();
           const snapshotData = await downloadBackupFromDrive(token, file.id);
           const validation = snapshotService.validateSnapshot(snapshotData);
           if (!validation.isValid || !validation.snapshot) {
@@ -321,7 +323,8 @@ export default function BackupManager({
         } catch (err: any) {
           if (err instanceof DriveApiError) {
             if (err.code === 'AUTH_EXPIRED') {
-              setDriveAuthState('drive-authorization-expired');
+              const isPref = getDriveBackupPreference();
+              setDriveAuthState(isPref ? 'drive-auth-recovery-required' : 'drive-authorization-expired');
               setGToken(null);
             } else if (err.code === 'PERMISSION_REVOKED') {
               setDriveAuthState('drive-permission-revoked');
@@ -341,26 +344,21 @@ export default function BackupManager({
   };
 
   const handleDeleteFromDrive = async (file: GoogleDriveFile) => {
-    const token = gToken || (await getAccessToken());
-    if (!token) {
-      setDriveAuthState('drive-authorization-expired');
-      setDriveError('Google Drive 인증 토큰이 유실되었습니다. 다시 연결해 주세요.');
-      return;
-    }
-
     showConfirm(
       `구글 드라이브의 백업 파일 [${file.name}]을 영구적으로 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
       async () => {
         setIsGDriveLoading(true);
         setDriveError(null);
         try {
+          const token = await ensureDriveAuthorization();
           await deleteBackupFromDrive(token, file.id);
           await fetchDriveBackups(token);
           showFeedback('구글 드라이브 백업 파일이 영구 삭제되었습니다.');
         } catch (err: any) {
           if (err instanceof DriveApiError) {
             if (err.code === 'AUTH_EXPIRED') {
-              setDriveAuthState('drive-authorization-expired');
+              const isPref = getDriveBackupPreference();
+              setDriveAuthState(isPref ? 'drive-auth-recovery-required' : 'drive-authorization-expired');
               setGToken(null);
             } else if (err.code === 'PERMISSION_REVOKED') {
               setDriveAuthState('drive-permission-revoked');
@@ -1625,6 +1623,11 @@ export default function BackupManager({
                         Drive 연결됨
                       </span>
                     )}
+                    {driveAuthState === 'drive-auth-recovery-required' && (
+                      <span className="text-[9px] font-bold text-amber-400 bg-amber-950/80 border border-amber-800/80 px-1.5 py-0.2 rounded-full">
+                        인증 복구 필요
+                      </span>
+                    )}
                     {driveAuthState === 'signed-in-drive-not-connected' && (
                       <span className="text-[9px] font-bold text-amber-400 bg-amber-950/80 border border-amber-800/80 px-1.5 py-0.2 rounded-full">
                         Drive 미연결
@@ -1681,13 +1684,13 @@ export default function BackupManager({
                 <span className="font-bold">알림:</span>
                 <span>{driveError}</span>
               </div>
-              {(driveAuthState === 'drive-authorization-expired' || driveAuthState === 'drive-permission-revoked' || driveAuthState === 'signed-in-drive-not-connected') && (
+              {(driveAuthState === 'drive-authorization-expired' || driveAuthState === 'drive-auth-recovery-required' || driveAuthState === 'drive-permission-revoked' || driveAuthState === 'signed-in-drive-not-connected') && (
                 <button
                   onClick={handleReconnectDrive}
                   disabled={isGAuthLoading}
                   className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg text-xs transition-colors shrink-0 cursor-pointer self-start sm:self-auto shadow-sm"
                 >
-                  {driveAuthState === 'drive-authorization-expired' ? 'Drive 다시 연결' : 'Drive 권한 승인'}
+                  {driveAuthState === 'drive-authorization-expired' || driveAuthState === 'drive-auth-recovery-required' ? 'Drive 다시 연결' : 'Drive 권한 승인'}
                 </button>
               )}
             </div>
@@ -1819,6 +1822,26 @@ export default function BackupManager({
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+          ) : driveAuthState === 'drive-auth-recovery-required' ? (
+            <div className="bg-slate-950/40 border border-amber-900/40 rounded-xl p-6 text-center space-y-3">
+              <Cloud className="w-10 h-10 text-amber-500 mx-auto" />
+              <div className="max-w-md mx-auto space-y-1">
+                <p className="text-xs font-bold text-amber-300">Google Drive 연결 설정 유지됨 (인증 필요)</p>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Google Drive 백업 설정이 활성화되어 있습니다. 새로고침 또는 브라우저 재시작으로 인해 인증 복구가 필요합니다. 아래 버튼을 눌러 Drive를 다시 연결해 주세요.
+                </p>
+              </div>
+              <div className="pt-2 flex justify-center">
+                <button
+                  onClick={handleReconnectDrive}
+                  disabled={isGAuthLoading}
+                  className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-5 rounded-xl text-xs transition-all cursor-pointer shadow-md disabled:opacity-50"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>Google Drive 다시 연결하기</span>
+                </button>
               </div>
             </div>
           ) : driveAuthState === 'signed-in-drive-not-connected' ? (
