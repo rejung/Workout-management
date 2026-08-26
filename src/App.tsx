@@ -213,26 +213,12 @@ export default function App() {
 
   // Backup Admin Actions
   const handleImportBackup = (data: { logs: WorkoutLog[]; routines: Routine[]; exercises: Exercise[]; weightLogs?: WeightLog[]; goalSettings?: any }) => {
-    // ① Workout Logs (and routines/exercises)
-    saveLogsToStorage(data.logs || []);
-    if (data.routines) saveRoutinesToStorage(data.routines);
-    if (data.exercises) saveExercisesToStorage(data.exercises);
-
-    // ② Weight Logs
-    if (data.weightLogs) {
-      saveWeightLogsToStorage(data.weightLogs);
-    }
-
-    // ③ Goal Settings
-    if (data.goalSettings && typeof data.goalSettings === 'object') {
-      const currentOrDefaults = goalRepository.getGoalSettings();
-      const mergedGoals = {
-        ...currentOrDefaults,
-        ...data.goalSettings
-      };
-      goalRepository.saveGoalSettings(mergedGoals);
-      window.dispatchEvent(new Event('wms-goals-updated'));
-    }
+    // Synchronize React state with atomically committed repositories
+    setLogs(data.logs || []);
+    if (data.routines) setRoutines(data.routines);
+    if (data.exercises) setExercises(data.exercises);
+    if (data.weightLogs) setWeightLogs(data.weightLogs);
+    window.dispatchEvent(new Event('wms-goals-updated'));
   };
 
   const handleClearAllData = () => {

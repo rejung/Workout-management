@@ -6,7 +6,19 @@
 // In-memory fallback for Node/CLI environment
 const memoryStorage = new Map<string, string>();
 
-function getStore(): { getItem: (k: string) => string | null; setItem: (k: string, v: string) => void; removeItem: (k: string) => void; clear: () => void } {
+export interface StorageBackend {
+  getItem: (k: string) => string | null;
+  setItem: (k: string, v: string) => void;
+  removeItem: (k: string) => void;
+  clear: () => void;
+}
+
+let customStoreProvider: (() => StorageBackend) | null = null;
+
+function getStore(): StorageBackend {
+  if (customStoreProvider) {
+    return customStoreProvider();
+  }
   if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
     return window.localStorage;
   }
@@ -22,6 +34,10 @@ function getStore(): { getItem: (k: string) => string | null; setItem: (k: strin
  * Storage Engine to interact with localStorage in a type-safe and safe manner.
  */
 export const storage = {
+  setStoreProvider(provider: (() => StorageBackend) | null): void {
+    customStoreProvider = provider;
+  },
+
   getItem<T>(key: string): T | null {
     try {
       const store = getStore();
@@ -39,6 +55,7 @@ export const storage = {
       store.setItem(key, JSON.stringify(value));
     } catch (error) {
       console.error(`Error writing key "${key}" to localStorage:`, error);
+      throw error;
     }
   },
 
@@ -48,6 +65,7 @@ export const storage = {
       store.removeItem(key);
     } catch (error) {
       console.error(`Error removing key "${key}" from localStorage:`, error);
+      throw error;
     }
   },
 
@@ -57,6 +75,7 @@ export const storage = {
       store.clear();
     } catch (error) {
       console.error('Error clearing localStorage:', error);
+      throw error;
     }
   }
 };

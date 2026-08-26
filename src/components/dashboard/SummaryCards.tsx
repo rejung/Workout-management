@@ -37,13 +37,17 @@ function MetricCard({ id, title, value, subValue, progress, goal, isTotal, onEdi
   // Parse weight subValue to prevent wrapping and look incredibly clean
   let displaySubValue = subValue;
   if (isWeight) {
-    const match = subValue.match(/([+-]?\d+(?:\.\d+)?)\s*kg/);
-    if (match) {
-      const num = parseFloat(match[1]);
-      const prefix = num > 0 ? '▲ 최근 4주 +' : num < 0 ? '▼ 최근 4주 ' : '- 최근 4주 ';
-      displaySubValue = `${prefix}${Math.abs(num).toFixed(1)}kg`;
+    if (value === '기록 없음' || subValue === '기록 없음' || !subValue.includes('kg')) {
+      displaySubValue = subValue;
     } else {
-      displaySubValue = subValue.replace('(4주 전 대비)', '').trim();
+      const match = subValue.match(/([+-]?\d+(?:\.\d+)?)\s*kg/);
+      if (match) {
+        const num = parseFloat(match[1]);
+        const prefix = num > 0 ? '▲ 최근 4주 +' : num < 0 ? '▼ 최근 4주 ' : '- 최근 4주 ';
+        displaySubValue = `${prefix}${Math.abs(num).toFixed(1)}kg`;
+      } else {
+        displaySubValue = subValue.replace('(4주 전 대비)', '').trim();
+      }
     }
   }
 
@@ -176,10 +180,10 @@ export default function SummaryCards({ metrics: propMetrics, onEditGoalClick, on
     {
       id: 'weight',
       title: '체중',
-      value: '72.6kg',
-      subValue: '+0.3kg (4주 전 대비)',
+      value: '기록 없음',
+      subValue: '체중 기록 시 변화 분석',
       goal: '목표: 75.0kg',
-      progress: 96.8,
+      progress: undefined,
     },
     {
       id: 'squat',

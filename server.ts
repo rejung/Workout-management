@@ -7,13 +7,14 @@ import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
+import { parseServerPort, DEFAULT_SERVER_PORT } from './src/utils/serverPort';
 
 // Load environment variables
 dotenv.config();
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = parseServerPort(process.env.PORT, DEFAULT_SERVER_PORT);
 
   // Body parsers
   app.use(express.json({ limit: '10mb' }));

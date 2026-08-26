@@ -298,14 +298,21 @@ export function getBestPR(logs: WorkoutLog[], exerciseMatcher: (id: string, name
   return bestSetsCount > 1 ? `${bestWeight}x${bestReps}x${bestSetsCount}` : `${bestWeight}x${bestReps}`;
 }
 
+export interface WeightMetrics {
+  current: number | null;
+  fourWeeksAgo: number | null;
+  diff: number | null;
+  progress: number | null;
+}
+
 // 2. Weight metrics calculation
-export function calculateWeightMetrics(weightLogs: WeightLog[]) {
-  if (weightLogs.length === 0) {
+export function calculateWeightMetrics(weightLogs: WeightLog[]): WeightMetrics {
+  if (!weightLogs || weightLogs.length === 0) {
     return {
-      current: 72.6,
-      fourWeeksAgo: 72.3,
-      diff: 0.3,
-      progress: 96.8
+      current: null,
+      fourWeeksAgo: null,
+      diff: null,
+      progress: null
     };
   }
 

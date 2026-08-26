@@ -6,14 +6,17 @@
 import { ApplicationSnapshot, WorkoutLog, Routine, Exercise, SnapshotWeightLog, SnapshotStatistics, BackupSummary } from '../types';
 import { GoalSettings } from '../types/goal';
 import { goalRepository } from '../storage/goalRepository';
+import { workoutRepository } from '../storage/workoutRepository';
+import { weightRepository } from '../storage/weightRepository';
 import { 
   CURRENT_SNAPSHOT_VERSION, 
   CURRENT_SCHEMA_VERSION, 
   SNAPSHOT_APP_NAME, 
-  SNAPSHOT_TYPE,
+  SNAPSHOT_TYPE, 
   EXPORT_FILENAME_PREFIX 
 } from '../constants';
 import { validateSnapshotDeep, calculateSnapshotStatistics, formatBytes } from './snapshotValidator';
+import { WeightLog } from '../utils/workoutEngine';
 
 export interface SnapshotValidationResult {
   isValid: boolean;
@@ -35,9 +38,40 @@ export interface RestoreSummary {
   healthReasons: string[];
 }
 
+export interface StorageStateSnapshot {
+  logs: WorkoutLog[];
+  routines: Routine[];
+  exercises: Exercise[];
+  weightLogs: WeightLog[];
+  goalSettings: GoalSettings;
+}
+
+/**
+ * Custom Error class representing an Atomic Restore failure, preserving
+ * the original cause and any rollback failure error.
+ */
+export class AtomicRestoreError extends Error {
+  cause: Error;
+  rollbackError: Error | null;
+
+  constructor(message: string, cause: Error, rollbackError: Error | null = null) {
+    super(message);
+    this.name = 'AtomicRestoreError';
+    this.cause = cause;
+    this.rollbackError = rollbackError;
+    Object.setPrototypeOf(this, AtomicRestoreError.prototype);
+  }
+}
+
+function deepClone<T>(val: T): T {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(val);
+  }
+  return JSON.parse(JSON.stringify(val));
+}
+
 /**
  * Type Guard to check if an unknown object conforms to the ApplicationSnapshot structure.
- * (Requirement 6: Type Safety)
  */
 export function isApplicationSnapshot(data: unknown): data is ApplicationSnapshot {
   if (!data || typeof data !== 'object') return false;
@@ -48,8 +82,84 @@ export function isApplicationSnapshot(data: unknown): data is ApplicationSnapsho
 
 export const snapshotService = {
   /**
+   * Captures the complete pre-restore state of all application storage targets.
+   */
+  captureCurrentStorageState(): StorageStateSnapshot {
+    return {
+      logs: deepClone(workoutRepository.getLogs()),
+      routines: deepClone(workoutRepository.getRoutines()),
+      exercises: deepClone(workoutRepository.getExercises()),
+      weightLogs: deepClone(weightRepository.getWeightLogs()),
+      goalSettings: deepClone(goalRepository.getGoalSettings())
+    };
+  },
+
+  /**
+   * Replaces storage state across all 5 targets with the provided snapshot.
+   */
+  applyStorageState(state: StorageStateSnapshot): void {
+    workoutRepository.saveLogs(state.logs);
+    workoutRepository.saveRoutines(state.routines);
+    workoutRepository.saveExercises(state.exercises);
+    weightRepository.saveWeightLogs(state.weightLogs);
+    goalRepository.saveGoalSettings(state.goalSettings);
+  },
+
+  /**
+   * Verifies that storage collections match the expected restored snapshot data.
+   */
+  verifyStorageState(expected: {
+    logs: WorkoutLog[];
+    routines: Routine[];
+    exercises: Exercise[];
+    weightLogs: SnapshotWeightLog[];
+    goalSettings?: unknown;
+  }): void {
+    const actualLogs = workoutRepository.getLogs();
+    if (actualLogs.length !== expected.logs.length) {
+      throw new Error(`Verification failed: workoutLogs count mismatch (expected ${expected.logs.length}, got ${actualLogs.length})`);
+    }
+    for (let i = 0; i < expected.logs.length; i++) {
+      if (actualLogs[i].id !== expected.logs[i].id || actualLogs[i].date !== expected.logs[i].date) {
+        throw new Error(`Verification failed: workoutLogs[${i}] mismatch (expected id ${expected.logs[i].id}, got ${actualLogs[i].id})`);
+      }
+    }
+
+    const actualRoutines = workoutRepository.getRoutines();
+    if (actualRoutines.length !== expected.routines.length) {
+      throw new Error(`Verification failed: routines count mismatch (expected ${expected.routines.length}, got ${actualRoutines.length})`);
+    }
+
+    const actualExercises = workoutRepository.getExercises();
+    if (actualExercises.length !== expected.exercises.length) {
+      throw new Error(`Verification failed: exercises count mismatch (expected ${expected.exercises.length}, got ${actualExercises.length})`);
+    }
+
+    const actualWeightLogs = weightRepository.getWeightLogs();
+    if (actualWeightLogs.length !== expected.weightLogs.length) {
+      throw new Error(`Verification failed: weightLogs count mismatch (expected ${expected.weightLogs.length}, got ${actualWeightLogs.length})`);
+    }
+    for (let i = 0; i < expected.weightLogs.length; i++) {
+      if (actualWeightLogs[i].id !== expected.weightLogs[i].id || actualWeightLogs[i].weight !== expected.weightLogs[i].weight) {
+        throw new Error(`Verification failed: weightLogs[${i}] mismatch`);
+      }
+    }
+
+    if (expected.goalSettings && typeof expected.goalSettings === 'object') {
+      const actualGoals = goalRepository.getGoalSettings();
+      const expGoals = expected.goalSettings as Record<string, unknown>;
+      const actualGoalsRecord = actualGoals as unknown as Record<string, unknown>;
+      for (const k of Object.keys(expGoals)) {
+        if (actualGoalsRecord[k] !== expGoals[k]) {
+          throw new Error(`Verification failed: goalSettings.${k} mismatch`);
+        }
+      }
+    }
+  },
+
+  /**
    * 1. createSnapshot: Creates a complete application snapshot including workout logs, weight logs,
-   * goal settings, routines, exercises, and snapshot metadata with statistics. (Requirement 1, 5, 9)
+   * goal settings, routines, exercises, and snapshot metadata with statistics.
    */
   createSnapshot(
     logs: WorkoutLog[],
@@ -71,21 +181,21 @@ export const snapshotService = {
         schemaVersion: CURRENT_SCHEMA_VERSION,
         statistics: stats
       },
-      workoutLogs: logs,
-      weightLogs: weightLogs || [],
-      goalSettings: goalSettings,
-      logs: logs, // Legacy alias support
-      routines: routines,
-      exercises: exercises,
+      workoutLogs: deepClone(logs),
+      weightLogs: deepClone(weightLogs || []),
+      goalSettings: deepClone(goalSettings),
+      logs: deepClone(logs), // Legacy alias support
+      routines: deepClone(routines),
+      exercises: deepClone(exercises),
       routineSettings: {
-        routines: routines,
-        exercises: exercises
+        routines: deepClone(routines),
+        exercises: deepClone(exercises)
       }
     };
   },
 
   /**
-   * 2. parseSnapshot: Safely parses raw string or returns object for snapshot processing. (Requirement 3, 5)
+   * 2. parseSnapshot: Safely parses raw string or returns object for snapshot processing.
    */
   parseSnapshot(rawInput: unknown): Record<string, unknown> | null {
     if (typeof rawInput === 'string') {
@@ -106,7 +216,7 @@ export const snapshotService = {
 
   /**
    * 3. validateSnapshot: Strictly validates an imported snapshot object or JSON string using deep validation.
-   * Ensures no partial or invalid import is allowed. (Requirement 1, 3, 4, 9)
+   * Ensures no partial or invalid import is allowed.
    */
   validateSnapshot(rawInput: unknown): SnapshotValidationResult {
     let parsedInput = rawInput;
@@ -185,16 +295,17 @@ export const snapshotService = {
   },
 
   /**
-   * 4. restoreSnapshot: Executes ALL-OR-NOTHING atomic restore from validated snapshot. (Requirement 4, 5, 9)
-   * Also exported as importSnapshot for compatibility.
+   * 4. restoreSnapshot: Executes ALL-OR-NOTHING atomic restore from validated snapshot with
+   * pre-restore state capture, strict repository writes, post-write verification,
+   * and compensating rollback upon any failure.
    */
   restoreSnapshot(
-    snapshot: ApplicationSnapshot,
-    onImportData: (data: { logs: WorkoutLog[]; routines: Routine[]; exercises: Exercise[]; weightLogs?: SnapshotWeightLog[]; goalSettings?: unknown }) => void,
-    fallbackRoutines: Routine[],
-    fallbackExercises: Exercise[]
+    snapshot: ApplicationSnapshot | string | unknown,
+    onImportData?: (data: { logs: WorkoutLog[]; routines: Routine[]; exercises: Exercise[]; weightLogs?: SnapshotWeightLog[]; goalSettings?: unknown }) => void,
+    fallbackRoutines: Routine[] = [],
+    fallbackExercises: Exercise[] = []
   ): RestoreSummary {
-    // Re-verify atomic integrity before invoking storage changes
+    // Step 1: Pre-execution deep validation (Rejects corrupt/invalid snapshot with write count = 0)
     const validation = this.validateSnapshot(snapshot);
     if (!validation.isValid || !validation.snapshot) {
       throw new Error(`Atomic Import Aborted: ${validation.error}`);
@@ -207,14 +318,66 @@ export const snapshotService = {
     const exercisesData = validData.exercises || fallbackExercises;
     const goalSettingsData = validData.goalSettings || null;
 
-    // ALL OR NOTHING execution via storage handler
-    onImportData({
-      logs: logsData,
-      routines: routinesData,
-      exercises: exercisesData,
-      weightLogs: weightLogsData,
-      goalSettings: goalSettingsData
-    });
+    // Step 2: Capture Pre-Restore State across all storage targets
+    const preState = this.captureCurrentStorageState();
+
+    // Step 3: Execute sequential writes with Post-Write Verification & Compensating Rollback
+    try {
+      workoutRepository.saveLogs(logsData);
+      workoutRepository.saveRoutines(routinesData);
+      workoutRepository.saveExercises(exercisesData);
+      weightRepository.saveWeightLogs(weightLogsData as WeightLog[]);
+      if (goalSettingsData && typeof goalSettingsData === 'object') {
+        goalRepository.saveGoalSettings(goalSettingsData as GoalSettings);
+      }
+
+      // Step 4: Post-write storage integrity verification
+      this.verifyStorageState({
+        logs: logsData,
+        routines: routinesData,
+        exercises: exercisesData,
+        weightLogs: weightLogsData,
+        goalSettings: goalSettingsData
+      });
+
+      // Step 5: Notify UI/caller on verified success
+      if (onImportData) {
+        onImportData({
+          logs: logsData,
+          routines: routinesData,
+          exercises: exercisesData,
+          weightLogs: weightLogsData,
+          goalSettings: goalSettingsData
+        });
+      }
+    } catch (writeOrVerifyError: any) {
+      const origErr = writeOrVerifyError instanceof Error 
+        ? writeOrVerifyError 
+        : new Error(String(writeOrVerifyError));
+
+      let rollbackErr: Error | null = null;
+      try {
+        // Compensating Rollback: restore all storage repositories to pre-restore state
+        this.applyStorageState(preState);
+        if (onImportData) {
+          onImportData({
+            logs: preState.logs,
+            routines: preState.routines,
+            exercises: preState.exercises,
+            weightLogs: preState.weightLogs,
+            goalSettings: preState.goalSettings
+          });
+        }
+      } catch (rbError: any) {
+        rollbackErr = rbError instanceof Error ? rbError : new Error(String(rbError));
+      }
+
+      throw new AtomicRestoreError(
+        `Atomic Restore Transaction Failed: ${origErr.message}`,
+        origErr,
+        rollbackErr
+      );
+    }
 
     return {
       logsCount: logsData.length,
@@ -232,16 +395,16 @@ export const snapshotService = {
    * Alias for restoreSnapshot
    */
   importSnapshot(
-    snapshot: ApplicationSnapshot,
-    onImportData: (data: { logs: WorkoutLog[]; routines: Routine[]; exercises: Exercise[]; weightLogs?: SnapshotWeightLog[]; goalSettings?: unknown }) => void,
-    fallbackRoutines: Routine[],
-    fallbackExercises: Exercise[]
+    snapshot: ApplicationSnapshot | string | unknown,
+    onImportData?: (data: { logs: WorkoutLog[]; routines: Routine[]; exercises: Exercise[]; weightLogs?: SnapshotWeightLog[]; goalSettings?: unknown }) => void,
+    fallbackRoutines: Routine[] = [],
+    fallbackExercises: Exercise[] = []
   ): RestoreSummary {
     return this.restoreSnapshot(snapshot, onImportData, fallbackRoutines, fallbackExercises);
   },
 
   /**
-   * 5. exportSnapshot: Exports snapshot object to JSON file download with Integrity Check and returns BackupSummary. (Requirement 2, 5, 6, 8, 9)
+   * 5. exportSnapshot: Exports snapshot object to JSON file download with Integrity Check and returns BackupSummary.
    */
   exportSnapshot(snapshot: ApplicationSnapshot, filenamePrefix: string = EXPORT_FILENAME_PREFIX): BackupSummary {
     const validation = this.validateSnapshot(snapshot);

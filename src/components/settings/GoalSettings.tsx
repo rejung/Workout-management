@@ -105,8 +105,8 @@ export default function GoalSettings({ logs, weightLogs }: GoalSettingsProps) {
   // Compute stats using selectors to respect SSOT
   const weightCurrent = weightMetrics.current;
   const weightGoal = goalSettings.weightGoal || 0;
-  const weightRemaining = getGoalRemaining(weightCurrent, weightGoal);
-  const weightProgress = getGoalProgressPercent(weightCurrent, weightGoal);
+  const weightRemaining = weightCurrent !== null ? getGoalRemaining(weightCurrent, weightGoal) : null;
+  const weightProgress = weightCurrent !== null ? getGoalProgressPercent(weightCurrent, weightGoal) : null;
 
   const squatCurrent = squatChange.current;
   const squatGoal = goalSettings.squatGoal || 0;
@@ -215,16 +215,18 @@ export default function GoalSettings({ logs, weightLogs }: GoalSettingsProps) {
             <div className="grid grid-cols-3 gap-2 text-center">
               <div className="bg-slate-950/40 p-2 rounded-xl border border-slate-800/40">
                 <span className="text-[10px] font-bold text-slate-400 block mb-0.5">현재 체중</span>
-                <span className="text-xs font-black text-white font-mono">{weightCurrent.toFixed(1)}kg</span>
+                <span className="text-xs font-black text-white font-mono">
+                  {weightCurrent !== null ? `${weightCurrent.toFixed(1)}kg` : '기록 없음'}
+                </span>
               </div>
               <div className="bg-slate-950/40 p-2 rounded-xl border border-slate-800/40">
                 <span className="text-[10px] font-bold text-slate-400 block mb-0.5">목표 체중</span>
-                <span className="text-xs font-black text-sky-400 font-mono">{isNaN(weightGoal) ? '-' : `${weightGoal.toFixed(1)}kg`}</span>
+                <span className="text-xs font-black text-sky-400 font-mono">{isNaN(weightGoal) || weightGoal === 0 ? '-' : `${weightGoal.toFixed(1)}kg`}</span>
               </div>
               <div className="bg-slate-950/40 p-2 rounded-xl border border-slate-800/40">
                 <span className="text-[10px] font-bold text-slate-400 block mb-0.5">남은 목표</span>
                 <span className="text-xs font-black text-slate-200 font-mono">
-                  {isNaN(weightGoal) ? '-' : `${weightRemaining >= 0 ? '+' : ''}${weightRemaining.toFixed(1)}kg`}
+                  {weightRemaining === null || isNaN(weightGoal) || weightGoal === 0 ? '-' : `${weightRemaining >= 0 ? '+' : ''}${weightRemaining.toFixed(1)}kg`}
                 </span>
               </div>
             </div>
@@ -234,13 +236,13 @@ export default function GoalSettings({ logs, weightLogs }: GoalSettingsProps) {
               <div className="flex justify-between items-center text-[10px] font-bold text-slate-400">
                 <span>체중 목표 달성률</span>
                 <span className="text-sky-400 font-mono">
-                  {isNaN(weightProgress) ? '0' : Math.min(weightProgress, 100).toFixed(1)}%
+                  {weightProgress === null || isNaN(weightProgress) ? '-' : `${Math.min(weightProgress, 100).toFixed(1)}%`}
                 </span>
               </div>
               <div className="h-1.5 w-full bg-slate-950 rounded-full overflow-hidden">
                 <motion.div
                   initial={{ width: 0 }}
-                  animate={{ width: `${isNaN(weightProgress) ? 0 : Math.min(weightProgress, 100)}%` }}
+                  animate={{ width: `${weightProgress === null || isNaN(weightProgress) ? 0 : Math.min(weightProgress, 100)}%` }}
                   transition={{ duration: 0.8, ease: 'easeOut' }}
                   className="h-full rounded-full bg-sky-500"
                 />

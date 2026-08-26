@@ -152,7 +152,11 @@ export default function AnalyticsDashboard({
   const ohpChange = getE1RMChange(logs, isOHP, p1Start, p2Start, p3Start);
 
   // Dynamic header summary string
-  const headerSummaryText = `체중 ${weightMetrics.diff >= 0 ? '+' : ''}${weightMetrics.diff.toFixed(1)}kg, ` +
+  const weightSummaryPart = weightMetrics.current !== null && weightMetrics.diff !== null
+    ? `체중 ${weightMetrics.diff >= 0 ? '+' : ''}${weightMetrics.diff.toFixed(1)}kg, `
+    : '체중 기록 없음, ';
+
+  const headerSummaryText = `${weightSummaryPart}` +
     `스쿼트 ${squatChange.diff4W >= 0 ? '+' : ''}${squatChange.diff4W}kg, ` +
     `벤치프레스 ${benchChange.diff4W >= 0 ? '+' : ''}${benchChange.diff4W}kg, ` +
     `데드리프트 ${deadliftChange.diff4W >= 0 ? '+' : ''}${deadliftChange.diff4W}kg, ` +
@@ -168,15 +172,19 @@ export default function AnalyticsDashboard({
   const totalGoalVal = threeLiftGoal;
   const totalProgress = (totalCurrentVal / totalGoalVal) * 100;
 
-  const weightProgress = (weightMetrics.current / goalSettings.weightGoal) * 100;
+  const weightProgress = weightMetrics.current !== null && goalSettings.weightGoal
+    ? (weightMetrics.current / goalSettings.weightGoal) * 100
+    : undefined;
 
   const summaryMetrics = [
     {
       id: 'weight',
       title: '체중',
-      value: `${weightMetrics.current.toFixed(1)}kg`,
-      subValue: `${weightMetrics.diff >= 0 ? '+' : ''}${weightMetrics.diff.toFixed(1)}kg (4주 전 대비)`,
-      goal: `목표: ${goalSettings.weightGoal.toFixed(1)}kg`,
+      value: weightMetrics.current !== null ? `${weightMetrics.current.toFixed(1)}kg` : '기록 없음',
+      subValue: weightMetrics.diff !== null
+        ? `${weightMetrics.diff >= 0 ? '+' : ''}${weightMetrics.diff.toFixed(1)}kg (4주 전 대비)`
+        : '체중 기록 시 변화 분석',
+      goal: goalSettings.weightGoal ? `목표: ${goalSettings.weightGoal.toFixed(1)}kg` : undefined,
       progress: weightProgress,
     },
     {
