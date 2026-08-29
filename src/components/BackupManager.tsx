@@ -193,11 +193,11 @@ export default function BackupManager({
     }
   };
 
-  const handleGLogin = async () => {
+  const handleGLogin = async (forceAccountSelection = false) => {
     setIsGAuthLoading(true);
     setDriveError(null);
     try {
-      const result = await googleSignIn(false);
+      const result = await googleSignIn({ forceConsent: false, forceAccountSelection });
       if (result) {
         setGUser(result.user);
         setGToken(result.accessToken);
@@ -224,17 +224,23 @@ export default function BackupManager({
     }
   };
 
-  const handleReconnectDrive = async () => {
+  const handleReconnectDrive = async (overrideForceConsent?: boolean) => {
     setIsGAuthLoading(true);
     setDriveError(null);
     try {
-      const result = await reconnectGoogleDrive();
+      const needsExplicitConsent = overrideForceConsent !== undefined
+        ? overrideForceConsent
+        : driveAuthState === 'drive-permission-revoked';
+      const result = await reconnectGoogleDrive({
+        forceConsent: needsExplicitConsent,
+        forceAccountSelection: false
+      });
       if (result) {
         setGUser(result.user);
         setGToken(result.accessToken);
         setDriveAuthState('drive-connected');
         await fetchDriveBackups(result.accessToken);
-        showFeedback('구글 드라이브 권한이 성공적으로 재연결되었습니다.');
+        showFeedback(needsExplicitConsent ? '구글 드라이브 권한이 성공적으로 승인되었습니다.' : '구글 드라이브 연결이 복구되었습니다.');
       }
     } catch (err: any) {
       if (err instanceof DriveApiError) {
@@ -598,9 +604,6 @@ export default function BackupManager({
       {/* Header with zero-waste Spacing */}
       <div className="border-b border-slate-800 pb-4">
         <h1 className="text-xl font-bold text-white tracking-tight">데이터 백업 및 시스템 관리</h1>
-        <p className="text-slate-400 text-xs mt-1">
-          로컬 브라우저 저장소 데이터 유실을 방지하기 위한 백업 파일(.json) 관리 및 이전 버전을 마이그레이션합니다.
-        </p>
       </div>
 
       {successMessage && (
@@ -651,7 +654,7 @@ export default function BackupManager({
               </span>
             </div>
             <div className="flex justify-between items-center text-zinc-300">
-              <span className="font-sans font-medium text-zinc-400">스냅샷 건강도 (Health Score)</span>
+              <span className="font-sans font-medium text-zinc-400">스냅샷 건강도</span>
               <span className="font-bold text-indigo-300">{restoreResult.healthScore !== undefined ? `${restoreResult.healthScore}점 / 100점` : '100점'}</span>
             </div>
             <div className="flex justify-between items-center text-zinc-300">
@@ -712,28 +715,28 @@ export default function BackupManager({
               
               <div className="flex items-center justify-between py-1.5 px-3 bg-zinc-900/60 rounded-lg">
                 <span className="flex items-center gap-2 text-zinc-200 font-medium">
-                  <span className="text-emerald-400 font-bold">✓</span> 운동 기록 (Workout Logs)
+                  <span className="text-emerald-400 font-bold">✓</span> 운동 기록
                 </span>
                 <span className="font-mono font-black text-white">{previewData.logsCount}개</span>
               </div>
 
               <div className="flex items-center justify-between py-1.5 px-3 bg-zinc-900/60 rounded-lg">
                 <span className="flex items-center gap-2 text-zinc-200 font-medium">
-                  <span className="text-emerald-400 font-bold">✓</span> 운동 종목 수 (Exercises)
+                  <span className="text-emerald-400 font-bold">✓</span> 운동 종목 수
                 </span>
                 <span className="font-mono font-black text-white">{previewData.exerciseCount || 0}개</span>
               </div>
 
               <div className="flex items-center justify-between py-1.5 px-3 bg-zinc-900/60 rounded-lg">
                 <span className="flex items-center gap-2 text-zinc-200 font-medium">
-                  <span className="text-emerald-400 font-bold">✓</span> 총 세트 수 (Sets)
+                  <span className="text-emerald-400 font-bold">✓</span> 총 세트 수
                 </span>
                 <span className="font-mono font-black text-white">{previewData.setCount || 0}개</span>
               </div>
 
               <div className="flex items-center justify-between py-1.5 px-3 bg-zinc-900/60 rounded-lg">
                 <span className="flex items-center gap-2 text-zinc-200 font-medium">
-                  <span className="text-emerald-400 font-bold">✓</span> 체중 기록 (Weight Logs)
+                  <span className="text-emerald-400 font-bold">✓</span> 체중 기록
                 </span>
                 <span className="font-mono font-black text-white">{previewData.weightLogsCount}개</span>
               </div>
@@ -743,7 +746,7 @@ export default function BackupManager({
                   <span className={previewData.hasGoalSettings ? "text-emerald-400 font-bold" : "text-zinc-500 font-bold"}>
                     {previewData.hasGoalSettings ? "✓" : "-"}
                   </span> 
-                  목표 설정 (Goal Settings)
+                  목표 설정
                 </span>
                 <span className={`font-mono font-black ${previewData.hasGoalSettings ? "text-indigo-300" : "text-zinc-500"}`}>
                   {previewData.hasGoalSettings ? "포함됨 (복원 대상)" : "없음 (현재 목표 유지)"}
@@ -762,7 +765,7 @@ export default function BackupManager({
               <div className="flex flex-col gap-1.5 py-2.5 px-3 bg-zinc-900/90 border border-indigo-500/30 rounded-xl mt-3">
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-200 font-bold flex items-center gap-1.5 text-xs">
-                    <span>🛡️ 스냅샷 건강도 (Health Score)</span>
+                    <span>🛡️ 스냅샷 건강도</span>
                   </span>
                   <span className={`font-mono font-black text-sm ${
                     (previewData.healthScore || 0) === 100 ? 'text-emerald-400' : (previewData.healthScore || 0) >= 80 ? 'text-amber-400' : 'text-rose-400'
@@ -1594,9 +1597,6 @@ export default function BackupManager({
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   구글 드라이브 클라우드 백업 및 복원
                 </h3>
-                <p className="text-slate-400 text-xs mt-0.5">
-                  안전하고 편리한 구글 드라이브(Google Drive) 클라우드를 통해 언제 어디서나 소중한 기록을 안전하게 저장하고 동기화하세요.
-                </p>
               </div>
             </div>
 
@@ -1871,7 +1871,7 @@ export default function BackupManager({
               <div className="max-w-md mx-auto space-y-1">
                 <p className="text-xs font-bold text-rose-300">Google Drive 인증 만료됨</p>
                 <p className="text-[11px] text-slate-400 leading-relaxed">
-                  Google Drive 접근 토큰이 만료되었습니다. 안전한 클라우드 백업 및 복원을 위해 다시 연결해 주세요.
+                  Google Drive 연결이 만료되었습니다. 다시 연결해 주세요.
                 </p>
               </div>
               <div className="pt-2 flex justify-center">
@@ -1941,9 +1941,6 @@ export default function BackupManager({
             <Download className="w-4 h-4 text-indigo-400" />
             애플리케이션 스냅샷 백업 및 복원
           </h3>
-          <p className="text-slate-400 text-xs leading-relaxed">
-            운동 기록, 체중 변화 내역뿐만 아니라 <span className="text-indigo-300 font-bold">목표 설정(Goal Settings) 및 루틴</span>까지 앱 상태를 100% 복원할 수 있는 통합 스냅샷(.json) 파일로 내보내거나 가져옵니다.
-          </p>
 
           <div className="grid grid-cols-2 gap-3 pt-2">
             {/* Export */}
@@ -1980,7 +1977,7 @@ export default function BackupManager({
             외부 기록 가져오기
           </h3>
           <p className="text-slate-400 text-xs leading-relaxed">
-            외부 운동 기록(.xlsx)을 현재 앱 데이터 형식으로 변환하여 가져옵니다.
+            Excel(.xlsx) 운동 기록을 가져옵니다.
           </p>
 
           <div className="pt-2">

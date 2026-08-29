@@ -31,6 +31,7 @@ export interface CreateAuthUrlOptions {
   forceConsent?: boolean;
   redirectUri?: string;
   prompt?: string;
+  loginHint?: string;
 }
 
 /**

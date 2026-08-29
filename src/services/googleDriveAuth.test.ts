@@ -16,7 +16,9 @@ import {
   getAccessToken,
   setCachedAccessToken,
   GoogleDriveFile,
-  DRIVE_FILE_SCOPE
+  DRIVE_FILE_SCOPE,
+  createGoogleDriveProvider,
+  waitForAuthInit
 } from './googleDriveService';
 import { snapshotService } from './snapshotService';
 
@@ -459,6 +461,101 @@ export async function runGoogleDriveReliabilitySuite(): Promise<DriveTestSuiteSu
     );
   } catch (err: any) {
     record('G15', '401 Clears Memory Token', false, err.message);
+  }
+
+  // -------------------------------------------------------------
+  // G16. OAuth Re-consent Elimination (forceConsent=false omits prompt=consent)
+  // -------------------------------------------------------------
+  try {
+    const providerWithoutForcedConsent = createGoogleDriveProvider(false);
+    const customParams = (providerWithoutForcedConsent as any).getCustomParameters ? (providerWithoutForcedConsent as any).getCustomParameters() : {};
+    const hasConsentPrompt = customParams?.prompt && customParams.prompt.includes('consent');
+
+    record(
+      'G16',
+      'OAuth Re-consent Elimination (Default Reconnect Omits prompt=consent)',
+      !hasConsentPrompt,
+      '재연결 및 토큰 복구 시 prompt=consent 미포함으로 불필요한 재동의 팝업 제거 확인'
+    );
+  } catch (err: any) {
+    record('G16', 'OAuth Re-consent Elimination', false, err.message);
+  }
+
+  // -------------------------------------------------------------
+  // G17. Explicit Re-consent on Permission Revocation (forceConsent=true sets prompt=consent)
+  // -------------------------------------------------------------
+  try {
+    const providerWithForcedConsent = createGoogleDriveProvider(true);
+    const customParams = (providerWithForcedConsent as any).getCustomParameters ? (providerWithForcedConsent as any).getCustomParameters() : {};
+    const hasConsentPrompt = customParams?.prompt && customParams.prompt.includes('consent');
+
+    record(
+      'G17',
+      'Explicit Re-consent on Permission Revocation (forceConsent=true sets prompt=consent)',
+      Boolean(hasConsentPrompt),
+      '권한 해제(403) 시에는 명시적 재동의(prompt=consent) 정상 파라미터 주입 확인'
+    );
+  } catch (err: any) {
+    record('G17', 'Explicit Re-consent on Permission Revocation', false, err.message);
+  }
+
+  // -------------------------------------------------------------
+  // G18. Account Chooser Elimination: Default provider omits prompt=select_account
+  // -------------------------------------------------------------
+  try {
+    const defaultProvider = createGoogleDriveProvider();
+    const defaultParams = (defaultProvider as any).getCustomParameters ? (defaultProvider as any).getCustomParameters() : {};
+    const hasSelectAccount = defaultParams?.prompt && defaultParams.prompt.includes('select_account');
+
+    const providerExplicitFalse = createGoogleDriveProvider({ forceConsent: false, forceAccountSelection: false });
+    const falseParams = (providerExplicitFalse as any).getCustomParameters ? (providerExplicitFalse as any).getCustomParameters() : {};
+    const hasSelectAccountFalse = falseParams?.prompt && falseParams.prompt.includes('select_account');
+
+    const g18Passed = !hasSelectAccount && !hasSelectAccountFalse;
+
+    record(
+      'G18',
+      'Account Chooser Elimination: Default provider omits prompt=select_account',
+      g18Passed,
+      '기본 로그인 및 세션 복원 시 prompt=select_account 파라미터 생략으로 계정 선택창 노출 방지 확인'
+    );
+  } catch (err: any) {
+    record('G18', 'Account Chooser Elimination', false, err.message);
+  }
+
+  // -------------------------------------------------------------
+  // G19. Explicit Account Switching: forceAccountSelection=true sets prompt=select_account
+  // -------------------------------------------------------------
+  try {
+    const switchProvider = createGoogleDriveProvider({ forceAccountSelection: true });
+    const switchParams = (switchProvider as any).getCustomParameters ? (switchProvider as any).getCustomParameters() : {};
+    const hasSelectAccount = switchParams?.prompt === 'select_account';
+
+    record(
+      'G19',
+      'Explicit Account Switching: forceAccountSelection=true sets prompt=select_account',
+      hasSelectAccount,
+      '명시적 계정 변경 요청 시 prompt=select_account 정상 주입 확인'
+    );
+  } catch (err: any) {
+    record('G19', 'Explicit Account Switching', false, err.message);
+  }
+
+  // -------------------------------------------------------------
+  // G20. Auth State Initialization Timing Gateway (waitForAuthInit)
+  // -------------------------------------------------------------
+  try {
+    const initPromise = waitForAuthInit();
+    const isPromise = initPromise && typeof (initPromise as any).then === 'function';
+
+    record(
+      'G20',
+      'Auth State Initialization Timing Gateway (waitForAuthInit ensures asynchronous session resolution)',
+      Boolean(isPromise),
+      '앱 시작/새로고침 시 비동기 세션 복원 대기 게이트웨이(waitForAuthInit) 동작 확인'
+    );
+  } catch (err: any) {
+    record('G20', 'Auth State Initialization Timing Gateway', false, err.message);
   }
 
   const passedCount = results.filter((r) => r.passed).length;

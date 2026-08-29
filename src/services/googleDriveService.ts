@@ -69,14 +69,34 @@ export const setDriveBackupPreference = (enabled: boolean): void => {
 // Full 'https://www.googleapis.com/auth/drive' is intentionally omitted to avoid over-privileged access.
 export const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 
-export const createGoogleDriveProvider = (promptConsent = false): GoogleAuthProvider => {
+export interface GoogleProviderOptions {
+  forceConsent?: boolean;
+  forceAccountSelection?: boolean;
+}
+
+export const createGoogleDriveProvider = (
+  options?: boolean | GoogleProviderOptions
+): GoogleAuthProvider => {
   const p = new GoogleAuthProvider();
   p.addScope(DRIVE_FILE_SCOPE);
-  if (promptConsent) {
+
+  const forceConsent = typeof options === 'boolean' ? options : Boolean(options?.forceConsent);
+  const forceAccountSelection = typeof options === 'object' ? Boolean(options?.forceAccountSelection) : false;
+
+  if (forceConsent && forceAccountSelection) {
     p.setCustomParameters({
       prompt: 'consent select_account'
     });
+  } else if (forceConsent) {
+    p.setCustomParameters({
+      prompt: 'consent'
+    });
+  } else if (forceAccountSelection) {
+    p.setCustomParameters({
+      prompt: 'select_account'
+    });
   }
+  // Default: NO prompt custom parameter is set (omits prompt completely to prevent account picker)
   return p;
 };
 
@@ -140,6 +160,28 @@ export interface EnsureDriveAuthOptions {
   forceVerify?: boolean;
 }
 
+let authInitialized = false;
+let authInitPromise: Promise<User | null> | null = null;
+
+/**
+ * Wait for Firebase Auth to complete initial asynchronous session restoration
+ */
+export const waitForAuthInit = (): Promise<User | null> => {
+  if (authInitialized) {
+    return Promise.resolve(auth.currentUser);
+  }
+  if (!authInitPromise) {
+    authInitPromise = new Promise((resolve) => {
+      const unsubscribe = onAuthStateChanged(auth, (user) => {
+        authInitialized = true;
+        unsubscribe();
+        resolve(user);
+      });
+    });
+  }
+  return authInitPromise;
+};
+
 /**
  * Drive Authorization Recovery Gateway
  *
@@ -152,6 +194,7 @@ export interface EnsureDriveAuthOptions {
  * 6. Never resets driveBackupEnabled on token loss or transient errors
  */
 export async function ensureDriveAuthorization(options: EnsureDriveAuthOptions = {}): Promise<string> {
+  await waitForAuthInit();
   const currentUser = auth.currentUser;
   if (!currentUser) {
     throw new DriveApiError(
@@ -185,7 +228,7 @@ export async function ensureDriveAuthorization(options: EnsureDriveAuthOptions =
 
   // Case 2: Token is missing from memory (or expired above)
   if (options.interactive) {
-    const signInResult = await googleSignIn(false);
+    const signInResult = await googleSignIn({ forceConsent: false, forceAccountSelection: false });
     if (!signInResult?.accessToken) {
       throw new DriveApiError(
         'AUTH_EXPIRED',
@@ -387,6 +430,7 @@ export const initAuth = (callbacks: AuthStateListenerCallbacks | ((user: User, t
       : callbacks;
 
   return onAuthStateChanged(auth, async (user: User | null) => {
+    authInitialized = true;
     if (!user) {
       cachedAccessToken = null;
       if (cb.onSignedOut) cb.onSignedOut();
@@ -442,17 +486,41 @@ export const initAuth = (callbacks: AuthStateListenerCallbacks | ((user: User, t
   });
 };
 
+export interface GoogleSignInOptions {
+  forceConsent?: boolean;
+  forceAccountSelection?: boolean;
+}
+
 /**
  * Initiate Google Sign-In with Drive Scope
+ * Priority: Reuses active Firebase auth session when available to eliminate redundant account choice prompts.
  */
-export const googleSignIn = async (promptConsent = false): Promise<{
+export const googleSignIn = async (
+  options?: boolean | GoogleSignInOptions
+): Promise<{
   user: User;
   accessToken: string;
   driveState: DriveAuthState;
 } | null> => {
+  const forceConsent = typeof options === 'boolean' ? options : Boolean(options?.forceConsent);
+  const forceAccountSelection = typeof options === 'object' ? Boolean(options?.forceAccountSelection) : false;
+
+  await ensureAuthPersistence();
+
+  // Firebase Session Priority Guard:
+  // If user is already authenticated in Firebase and active token is valid in memory,
+  // and no explicit re-consent or account selection is requested, reuse session directly.
+  if (auth.currentUser && cachedAccessToken && !forceConsent && !forceAccountSelection) {
+    return {
+      user: auth.currentUser,
+      accessToken: cachedAccessToken,
+      driveState: 'drive-connected'
+    };
+  }
+
   try {
     isSigningIn = true;
-    const provider = createGoogleDriveProvider(promptConsent);
+    const provider = createGoogleDriveProvider({ forceConsent, forceAccountSelection });
     const result = await signInWithPopup(auth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (!credential?.accessToken) {
@@ -496,13 +564,25 @@ export const googleSignIn = async (promptConsent = false): Promise<{
 };
 
 /**
- * Reconnect / Re-consent Google Drive without resetting Firebase user session
+ * Explicit alias for signInWithGoogle
  */
-export const reconnectGoogleDrive = async (): Promise<{
+export const signInWithGoogle = googleSignIn;
+
+/**
+ * Reconnect / Auth Recovery for Google Drive without resetting Firebase user session
+ * Defaults to forceConsent: false and forceAccountSelection: false to eliminate repeated consent & account screens.
+ * Pass { forceConsent: true } only when explicit re-consent is required (e.g. permission revoked).
+ * Pass { forceAccountSelection: true } only when explicit account change is required.
+ */
+export const reconnectGoogleDrive = async (
+  options?: boolean | GoogleSignInOptions
+): Promise<{
   user: User;
   accessToken: string;
 }> => {
-  const result = await googleSignIn(true);
+  const forceConsent = typeof options === 'boolean' ? options : Boolean(options?.forceConsent);
+  const forceAccountSelection = typeof options === 'object' ? Boolean(options?.forceAccountSelection) : false;
+  const result = await googleSignIn({ forceConsent, forceAccountSelection });
   if (!result) {
     throw new DriveApiError('UNAUTHORIZED', 401, 'Google Drive 재연결에 실패했습니다.');
   }

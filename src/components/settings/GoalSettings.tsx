@@ -139,9 +139,6 @@ export default function GoalSettings({ logs, weightLogs }: GoalSettingsProps) {
         <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
           <span>목표 설정 & 관리</span>
         </h1>
-        <p className="text-slate-400 text-xs mt-1 leading-normal">
-          체중과 운동 목표를 설정합니다. 변경한 목표는 분석 대시보드에 자동으로 반영되어 현재 기록과 비교하며 진행 상황을 한눈에 추적할 수 있습니다.
-        </p>
       </div>
 
       {/* Success/Toast Notification (2 seconds duration) */}
@@ -170,7 +167,7 @@ export default function GoalSettings({ logs, weightLogs }: GoalSettingsProps) {
 
             {/* Stepper Input UI */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 block">목표 체중 (Goal Weight)</label>
+              <label className="text-xs font-bold text-slate-400 block">목표 체중</label>
               <div className="flex items-center bg-slate-950/80 border border-slate-800 rounded-xl overflow-hidden focus-within:border-indigo-500/80 focus-within:ring-1 focus-within:ring-indigo-500/30 transition-all">
                 <button
                   type="button"
@@ -379,10 +376,6 @@ export default function GoalSettings({ logs, weightLogs }: GoalSettingsProps) {
                 </div>
               </div>
             </div>
-
-            <p className="text-[10px] text-slate-500 leading-normal pl-1">
-              * 벤치프레스, 스쿼트, 데드리프트 목표의 합산 중량입니다. 메인 리프트를 유기적으로 성장시켜 3대 목표를 완수하세요.
-            </p>
           </div>
 
           {/* Progress Bar (Gold Theme) */}

@@ -217,6 +217,10 @@ export class ServerGoogleDriveOAuthService implements GoogleDriveOAuthService {
     url.searchParams.set('include_granted_scopes', 'true');
     url.searchParams.set('state', state);
 
+    if (options.loginHint && typeof options.loginHint === 'string' && options.loginHint.trim() !== '') {
+      url.searchParams.set('login_hint', options.loginHint.trim());
+    }
+
     if (options.forceConsent) {
       url.searchParams.set('prompt', 'consent');
     } else if (options.prompt) {

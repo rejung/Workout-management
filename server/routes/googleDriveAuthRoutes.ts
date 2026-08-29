@@ -35,6 +35,24 @@ function extractAuthenticatedUserId(req: Request): string | null {
 }
 
 /**
+ * Helper to extract authenticated user email for login_hint UX optimization.
+ * Note: Never used for authorization, identity verification, or security decisions.
+ */
+function extractAuthenticatedUserEmail(req: Request): string | undefined {
+  if (req.body && typeof req.body.loginHint === 'string' && req.body.loginHint.trim()) {
+    return req.body.loginHint.trim();
+  }
+  if (req.body && typeof req.body.email === 'string' && req.body.email.trim()) {
+    return req.body.email.trim();
+  }
+  const emailHeader = req.headers['x-wms-user-email'];
+  if (typeof emailHeader === 'string' && emailHeader.trim()) {
+    return emailHeader.trim();
+  }
+  return undefined;
+}
+
+/**
  * GET /api/google-drive/auth/status
  *
  * Retrieves the user's Google Drive OAuth authorization status on the server.
@@ -92,11 +110,13 @@ googleDriveAuthRouter.post('/start', async (req: Request, res: Response): Promis
     const forceConsent = Boolean(req.body?.forceConsent);
     const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt : undefined;
     const redirectUri = typeof req.body?.redirectUri === 'string' ? req.body.redirectUri : undefined;
+    const loginHint = extractAuthenticatedUserEmail(req);
 
     const authorizationUrl = await googleDriveOAuthService.createAuthorizationUrl(userId, {
       forceConsent,
       prompt,
-      redirectUri
+      redirectUri,
+      loginHint
     });
 
     res.json({

@@ -481,6 +481,136 @@ export async function runServerOAuthContractTests(): Promise<{
     });
   }
 
+  // -------------------------------------------------------------
+  // Test 9: OAuth Re-consent Elimination (Default auth URL omits prompt=consent)
+  // -------------------------------------------------------------
+  try {
+    const service = new ServerGoogleDriveOAuthService(undefined, () => mockConfig);
+    // Call without forceConsent (default)
+    const defaultAuthUrlStr = await service.createAuthorizationUrl('user-test-reconsent-elimination');
+    const parsedDefaultUrl = new URL(defaultAuthUrlStr);
+
+    const hasNoPromptParam = parsedDefaultUrl.searchParams.get('prompt') === null;
+    const hasCorrectScope = parsedDefaultUrl.searchParams.get('scope') === 'https://www.googleapis.com/auth/drive.file';
+
+    const t9Passed = hasNoPromptParam && hasCorrectScope;
+
+    results.push({
+      scenarioId: 'Test 9',
+      name: 'OAuth Re-consent Elimination: Default URL omits prompt parameter',
+      passed: t9Passed,
+      details: t9Passed
+        ? 'Verified default createAuthorizationUrl does not force prompt=consent, preserving existing authorizations'
+        : 'Default URL unexpectedly forced prompt parameter'
+    });
+  } catch (err: any) {
+    results.push({
+      scenarioId: 'Test 9',
+      name: 'OAuth Re-consent Elimination check',
+      passed: false,
+      details: err.message
+    });
+  }
+
+  // -------------------------------------------------------------
+  // Test 10: Login Hint Optimization (Authenticated user email injected as login_hint)
+  // -------------------------------------------------------------
+  try {
+    const service = new ServerGoogleDriveOAuthService(undefined, () => mockConfig);
+    const authUrlWithHintStr = await service.createAuthorizationUrl('user-test-login-hint', {
+      loginHint: 'athlete@example.com'
+    });
+    const parsedUrl = new URL(authUrlWithHintStr);
+
+    const hasLoginHint = parsedUrl.searchParams.get('login_hint') === 'athlete@example.com';
+    const hasNoPrompt = parsedUrl.searchParams.get('prompt') === null;
+    const hasScope = parsedUrl.searchParams.get('scope') === 'https://www.googleapis.com/auth/drive.file';
+
+    const t10Passed = hasLoginHint && hasNoPrompt && hasScope;
+
+    results.push({
+      scenarioId: 'Test 10',
+      name: 'Login Hint Optimization: User email attached as login_hint without forcing account chooser',
+      passed: t10Passed,
+      details: t10Passed
+        ? 'Verified login_hint is attached to preselect account and prompt parameter remains omitted'
+        : 'Login hint parameter verification failed'
+    });
+  } catch (err: any) {
+    results.push({
+      scenarioId: 'Test 10',
+      name: 'Login Hint Optimization check',
+      passed: false,
+      details: err.message
+    });
+  }
+
+  // -------------------------------------------------------------
+  // Test 11: Missing Email Handling (login_hint gracefully omitted)
+  // -------------------------------------------------------------
+  try {
+    const service = new ServerGoogleDriveOAuthService(undefined, () => mockConfig);
+    const authUrlNoHintStr = await service.createAuthorizationUrl('user-test-no-hint', {
+      loginHint: undefined
+    });
+    const parsedUrl = new URL(authUrlNoHintStr);
+
+    const hasNoLoginHint = parsedUrl.searchParams.get('login_hint') === null;
+    const hasScope = parsedUrl.searchParams.get('scope') === 'https://www.googleapis.com/auth/drive.file';
+
+    const t11Passed = hasNoLoginHint && hasScope;
+
+    results.push({
+      scenarioId: 'Test 11',
+      name: 'Missing Email Handling: login_hint gracefully omitted when email unavailable',
+      passed: t11Passed,
+      details: t11Passed
+        ? 'Verified authorization URL generates cleanly without login_hint when email is omitted'
+        : 'Missing email resulted in unexpected parameter'
+    });
+  } catch (err: any) {
+    results.push({
+      scenarioId: 'Test 11',
+      name: 'Missing Email Handling check',
+      passed: false,
+      details: err.message
+    });
+  }
+
+  // -------------------------------------------------------------
+  // Test 12: Revoked Permission Recovery with Login Hint
+  // -------------------------------------------------------------
+  try {
+    const service = new ServerGoogleDriveOAuthService(undefined, () => mockConfig);
+    const authUrlRevokedStr = await service.createAuthorizationUrl('user-test-revoked-hint', {
+      loginHint: 'athlete@example.com',
+      forceConsent: true
+    });
+    const parsedUrl = new URL(authUrlRevokedStr);
+
+    const hasLoginHint = parsedUrl.searchParams.get('login_hint') === 'athlete@example.com';
+    const hasConsentPrompt = parsedUrl.searchParams.get('prompt') === 'consent';
+    const hasScope = parsedUrl.searchParams.get('scope') === 'https://www.googleapis.com/auth/drive.file';
+
+    const t12Passed = hasLoginHint && hasConsentPrompt && hasScope;
+
+    results.push({
+      scenarioId: 'Test 12',
+      name: 'Revoked Permission Recovery: login_hint paired with prompt=consent on explicit recovery',
+      passed: t12Passed,
+      details: t12Passed
+        ? 'Verified permission recovery applies prompt=consent alongside login_hint without prompt=select_account'
+        : 'Revoked permission recovery check failed'
+    });
+  } catch (err: any) {
+    results.push({
+      scenarioId: 'Test 12',
+      name: 'Revoked Permission Recovery check',
+      passed: false,
+      details: err.message
+    });
+  }
+
   const passedCount = results.filter((r) => r.passed).length;
   return {
     total: results.length,
