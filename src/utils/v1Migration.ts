@@ -8,6 +8,7 @@ import { WorkoutLog, Routine, Exercise, ExerciseSession, SetRecord, MuscleCatego
 import { DEFAULT_EXERCISES } from '../constants';
 import { 
   calculateSetE1RM, 
+  roundE1RM,
   getMaxE1RMForExercise, 
   isSquat, 
   isBenchPress, 
@@ -1066,7 +1067,7 @@ export async function parseV1Excel(
       debugLogs.push(` - Total Valid Main Lift Sets Included: ${matchedSetsCount}`);
       if (maxCalculatedE1RM > 0) {
         debugLogs.push(` - Selected Representative Set: ${bestSetText} on ${bestSetDate}`);
-        debugLogs.push(` - Final V2 e1RM Value: ${Math.round(maxCalculatedE1RM)}kg (Unrounded: ${maxCalculatedE1RM.toFixed(2)}kg)`);
+        debugLogs.push(` - Final V2 e1RM Value: ${roundE1RM(maxCalculatedE1RM)}kg (Unrounded: ${maxCalculatedE1RM.toFixed(2)}kg)`);
         debugLogs.push(` - Selection Reason: Highest calculated e1RM value among all non-warmup matched main compound sets.`);
         debugLogs.push(` - Calculation Formula: ${bestSetText.split(' × ')[0]} * (1 + ${bestSetText.split(' × ')[1].replace('회', '')} / 30) = ${maxCalculatedE1RM.toFixed(2)}`);
       } else {
@@ -1075,10 +1076,10 @@ export async function parseV1Excel(
     }
     debugLogs.push(`================================================================================\n`);
 
-    const squatV2 = Math.round(getMaxE1RMForExercise(mappedLogs, isSquat, undefined, undefined, debugLogs).maxE1RM);
-    const benchV2 = Math.round(getMaxE1RMForExercise(mappedLogs, isBenchPress, undefined, undefined, debugLogs).maxE1RM);
-    const deadV2 = Math.round(getMaxE1RMForExercise(mappedLogs, isDeadlift, undefined, undefined, debugLogs).maxE1RM);
-    const ohpV2 = Math.round(getMaxE1RMForExercise(mappedLogs, isOHP, undefined, undefined, debugLogs).maxE1RM);
+    const squatV2 = roundE1RM(getMaxE1RMForExercise(mappedLogs, isSquat, undefined, undefined, debugLogs).maxE1RM);
+    const benchV2 = roundE1RM(getMaxE1RMForExercise(mappedLogs, isBenchPress, undefined, undefined, debugLogs).maxE1RM);
+    const deadV2 = roundE1RM(getMaxE1RMForExercise(mappedLogs, isDeadlift, undefined, undefined, debugLogs).maxE1RM);
+    const ohpV2 = roundE1RM(getMaxE1RMForExercise(mappedLogs, isOHP, undefined, undefined, debugLogs).maxE1RM);
     const totalV2 = squatV2 + benchV2 + deadV2;
 
     const sortedWeights = [...parsedWeightLogs].sort((a, b) => b.date.localeCompare(a.date));

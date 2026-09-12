@@ -22,6 +22,15 @@ export function calculateSetE1RM(weight: number, reps: number): number {
   return weight * (1 + reps / 30);
 }
 
+/**
+ * Rounds an estimated 1RM value using standard half-up rounding (사사오입, Math.round),
+ * consistent across all exercises, evaluating 115kg x 5 (134.17kg) to 134kg.
+ */
+export function roundE1RM(val: number): number {
+  if (!val || val <= 0) return 0;
+  return Math.round(val);
+}
+
 let uuidCounter = 0;
 
 export function generateUUID(): string {
@@ -505,14 +514,9 @@ export function getE1RMChange(
   p2Start: string,
   p3Start: string
 ) {
+  const overall = getMaxE1RMForExercise(logs, exerciseMatcher);
   const currentRes = getMaxE1RMForExercise(logs, exerciseMatcher, p1Start);
-  let currentVal = currentRes.maxE1RM;
-
-  // Fallback to overall max if current period has no logs
-  if (currentVal === 0) {
-    const overall = getMaxE1RMForExercise(logs, exerciseMatcher);
-    currentVal = overall.maxE1RM;
-  }
+  let currentVal = Math.max(overall.maxE1RM, currentRes.maxE1RM);
 
   const p2Res = getMaxE1RMForExercise(logs, exerciseMatcher, p2Start, p1Start);
   let p2Val = p2Res.maxE1RM;
@@ -532,14 +536,17 @@ export function getE1RMChange(
     p3Val = oldestRes.maxE1RM;
   }
 
-  const diff4W = currentVal > 0 && p2Val > 0 ? currentVal - p2Val : 0;
-  const baseFor8W = p3Val > 0 ? p3Val : (p2Val > 0 ? p2Val : currentVal);
-  const diff8W = currentVal > 0 && baseFor8W > 0 ? currentVal - baseFor8W : 0;
+  const cur = roundE1RM(currentVal);
+  const p2 = roundE1RM(p2Val);
+  const p3 = roundE1RM(p3Val);
+  const diff4W = cur > 0 && p2 > 0 ? cur - p2 : 0;
+  const baseFor8W = p3 > 0 ? p3 : (p2 > 0 ? p2 : cur);
+  const diff8W = cur > 0 && baseFor8W > 0 ? cur - baseFor8W : 0;
 
   return {
-    current: Math.round(currentVal),
-    diff4W: Math.round(diff4W),
-    diff8W: Math.round(diff8W)
+    current: cur,
+    diff4W,
+    diff8W
   };
 }
 

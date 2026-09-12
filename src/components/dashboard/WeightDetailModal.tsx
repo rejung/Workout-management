@@ -5,15 +5,30 @@
 
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, TrendingUp, TrendingDown, Target, Calendar, Award, Plus, BarChart2 } from 'lucide-react';
+import { X, Plus } from 'lucide-react';
 import { WeightLog } from '../../utils/workoutEngine';
-import { formatWorkoutDateShort, getLastNDaysRange } from '../../utils/dateUtils';
+import { getLastNDaysRange } from '../../utils/dateUtils';
 
-const formatXAxisMonth = (dateStr: string) => {
+type Period = '7d' | '4w' | '3m' | '1y' | 'all';
+
+const formatXAxisDate = (dateStr: string, period: Period) => {
   const parts = dateStr.split('-');
-  if (parts.length >= 2) {
+  if (parts.length === 3) {
     const month = parseInt(parts[1], 10);
+    const day = parseInt(parts[2], 10);
+    if (period === '7d' || period === '4w') {
+      return `${month}/${day}`;
+    }
     return `${month}월`;
+  }
+  return dateStr;
+};
+
+const formatCompactDate = (dateStr: string) => {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    return `${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}`;
   }
   return dateStr;
 };
@@ -25,8 +40,6 @@ interface WeightDetailModalProps {
   goalWeight: number;
   onRecordWeightClick: () => void;
 }
-
-type Period = '7d' | '4w' | '3m' | '1y' | 'all';
 
 export default function WeightDetailModal({
   isOpen,
@@ -123,6 +136,22 @@ export default function WeightDetailModal({
     return sortedLogs.filter(log => log.date >= cutoffStr);
   }, [sortedLogs, selectedPeriod]);
 
+  // Derived period label
+  const periodLabel = useMemo(() => {
+    switch (selectedPeriod) {
+      case '7d': return '7일';
+      case '4w': return '4주';
+      case '3m': return '3개월';
+      case '1y': return '1년';
+      case 'all': return '전체';
+    }
+  }, [selectedPeriod]);
+
+  // Dynamic change label based on period selection (Section 4)
+  const recentChangeLabel = useMemo(() => {
+    if (selectedPeriod === 'all') return '전체 변화';
+    return `최근 ${periodLabel}`;
+  }, [selectedPeriod, periodLabel]);
 
   // Calculations for stats
   const stats = useMemo(() => {
@@ -131,9 +160,7 @@ export default function WeightDetailModal({
         highest: { weight: 0, date: '' },
         lowest: { weight: 0, date: '' },
         average: 0,
-        change: 0,
-        avgPast7Days: 0,
-        remainingToGoal: 0
+        change: 0
       };
     }
 
@@ -155,65 +182,85 @@ export default function WeightDetailModal({
       }
     }
 
-    // Average
+    // Period Average
     const sum = weights.reduce((a, b) => a + b, 0);
     const average = sum / filteredLogs.length;
 
     // Change (latest in period minus first in period)
-    const change = filteredLogs[filteredLogs.length - 1].weight - filteredLogs[0].weight;
-
-    // Past 7 days average
-    const now = new Date();
-    const past7DaysCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const past7DaysLogs = sortedLogs.filter(l => l.date >= past7DaysCutoff);
-    const avgPast7Days = past7DaysLogs.length > 0
-      ? past7DaysLogs.reduce((acc, curr) => acc + curr.weight, 0) / past7DaysLogs.length
+    const change = filteredLogs.length > 1
+      ? filteredLogs[filteredLogs.length - 1].weight - filteredLogs[0].weight
       : 0;
-
-    // Remaining to goal weight
-    const currentWeight = latestLog ? latestLog.weight : 0;
-    const remainingToGoal = goalWeight - currentWeight;
 
     return {
       highest,
       lowest,
       average,
-      change,
-      avgPast7Days,
-      remainingToGoal
+      change
     };
-  }, [filteredLogs, sortedLogs, latestLog, goalWeight]);
+  }, [filteredLogs]);
 
-  // Dynamic Selector-based Insight Generation
+  // Goal state assessment
+  const currentWeight = latestLog ? latestLog.weight : 0;
+  const diffToGoal = goalWeight > 0 ? currentWeight - goalWeight : 0;
+  const absDiffToGoal = Math.abs(diffToGoal);
+  const isGoalReached = goalWeight > 0 && absDiffToGoal <= 0.2;
+  const isGoalNear = goalWeight > 0 && absDiffToGoal <= 0.5 && !isGoalReached;
+
+  // Prioritized One-line Insight without numeric redundancy (Section 12, 13)
   const weightInsight = useMemo(() => {
-    if (weightLogs.length === 0) return '';
-    
-    const currentWeight = latestLog ? latestLog.weight : 0;
-    const remaining = goalWeight - currentWeight;
-    
-    if (filteredLogs.length >= 2) {
-      const firstLog = filteredLogs[0];
-      const lastLog = filteredLogs[filteredLogs.length - 1];
-      const diff = lastLog.weight - firstLog.weight;
-      const periodText = selectedPeriod === '7d' ? '7일' : selectedPeriod === '4w' ? '4주' : selectedPeriod === '3m' ? '3개월' : selectedPeriod === '1y' ? '1년' : '조회 기간';
+    if (weightLogs.length === 0) return '체중 기록이 없습니다.';
+    if (!latestLog) return '';
 
-      if (Math.abs(remaining) <= 0.2) {
-        return `목표 체중(${goalWeight.toFixed(1)}kg)에 거의 도달했습니다! 정말 훌륭한 성과입니다.`;
-      }
-
-      if (Math.abs(diff) <= 0.3) {
-        return `최근 2주간 체중이 안정적으로 유지되고 있습니다. 현재 ${currentWeight.toFixed(1)}kg 선을 안정되게 기록하고 있습니다.`;
-      }
-
-      if (diff < 0) {
-        return `최근 ${periodText} 동안 체중이 ${Math.abs(diff).toFixed(1)}kg 감소했습니다. 목표 체중까지 ${Math.abs(remaining).toFixed(1)}kg 남았습니다.`;
-      }
-
-      return `최근 ${periodText} 동안 체중이 ${diff.toFixed(1)}kg 증가했습니다. 목표 체중까지 ${Math.abs(remaining).toFixed(1)}kg 남았습니다.`;
+    // 1. Goal reached (within 0.2kg)
+    if (goalWeight > 0 && isGoalReached) {
+      return '목표 체중에 도달했습니다.';
     }
 
-    return `목표 체중까지 ${Math.abs(remaining).toFixed(1)}kg 남았습니다. 지속적인 기록으로 추이를 분석해 보세요.`;
-  }, [filteredLogs, latestLog, goalWeight, selectedPeriod, weightLogs]);
+    // 2. Goal near (within 0.5kg)
+    if (goalWeight > 0 && isGoalNear) {
+      return '현재 체중은 목표 범위에 근접해 있습니다.';
+    }
+
+    // 3. Goal relation with recent trend
+    if (goalWeight > 0 && filteredLogs.length >= 2) {
+      const diff = filteredLogs[filteredLogs.length - 1].weight - filteredLogs[0].weight;
+      const isStable = Math.abs(diff) <= 0.2;
+
+      if (isStable) {
+        return '최근 체중은 안정적인 범위에서 유지되고 있습니다.';
+      }
+
+      // Current < Goal: increasing is moving toward goal
+      if (latestLog.weight < goalWeight && diff > 0.2) {
+        return '현재 흐름은 목표 방향과 일치합니다.';
+      }
+      // Current > Goal: decreasing is moving toward goal
+      if (latestLog.weight > goalWeight && diff < -0.2) {
+        return '현재 흐름은 목표 방향과 일치합니다.';
+      }
+      // Moving away from goal
+      if (latestLog.weight < goalWeight && diff < -0.2) {
+        return '최근 체중이 완만하게 감소하고 있습니다.';
+      }
+      if (latestLog.weight > goalWeight && diff > 0.2) {
+        return '최근 체중이 완만하게 증가하고 있습니다.';
+      }
+    }
+
+    // 4. Stable trend without goal or fallback
+    if (filteredLogs.length >= 2) {
+      const diff = filteredLogs[filteredLogs.length - 1].weight - filteredLogs[0].weight;
+      if (Math.abs(diff) <= 0.2) {
+        return '최근 체중은 안정적인 범위에서 유지되고 있습니다.';
+      }
+      if (diff > 0.2) {
+        return '최근 체중이 완만하게 증가하고 있습니다.';
+      }
+      return '최근 체중이 완만하게 감소하고 있습니다.';
+    }
+
+    return '체중을 꾸준히 기록하여 장기적인 추세를 확인해 보세요.';
+  }, [weightLogs, latestLog, goalWeight, filteredLogs, isGoalReached, isGoalNear]);
 
   // Render Line Chart elements manually for absolute compatibility and precision
   const chartData = useMemo(() => {
@@ -223,23 +270,25 @@ export default function WeightDetailModal({
     let minWeight = Math.min(...weights);
     let maxWeight = Math.max(...weights);
 
-    // Include goal weight in the chart boundary
-    minWeight = Math.min(minWeight, goalWeight);
-    maxWeight = Math.max(maxWeight, goalWeight);
+    // Include goal weight in chart boundary if set
+    if (goalWeight > 0) {
+      minWeight = Math.min(minWeight, goalWeight);
+      maxWeight = Math.max(maxWeight, goalWeight);
+    }
 
     // Add padding so lines are never clipped
     const range = maxWeight - minWeight;
-    const padding = range === 0 ? 2 : range * 0.15;
+    const padding = range === 0 ? 1.5 : range * 0.18;
     const allMin = Math.max(0, minWeight - padding);
     const allMax = maxWeight + padding;
 
-    // Dimensions
+    // Dimensions (optimized for compact viewport and high readability)
     const width = 600;
-    const height = 280;
-    const paddingLeft = 45;
-    const paddingRight = 85; // Extra padding for goal weight label
-    const paddingTop = 20;
-    const paddingBottom = 30;
+    const height = 200;
+    const paddingLeft = 38;
+    const paddingRight = 72; // Padding for goal weight label
+    const paddingTop = 14;
+    const paddingBottom = 22;
 
     const chartWidth = width - paddingLeft - paddingRight;
     const chartHeight = height - paddingTop - paddingBottom;
@@ -252,24 +301,12 @@ export default function WeightDetailModal({
       const y = allMax !== allMin
         ? paddingTop + (1 - (log.weight - allMin) / (allMax - allMin)) * chartHeight
         : paddingTop + chartHeight / 2;
-      
-      // Calculate diff from the previous point
-      let prevDiff = 0;
-      if (index > 0) {
-        prevDiff = log.weight - filteredLogs[index - 1].weight;
-      } else {
-        // find index in main sortedLogs
-        const mainIndex = sortedLogs.findIndex(l => l.id === log.id);
-        if (mainIndex > 0) {
-          prevDiff = log.weight - sortedLogs[mainIndex - 1].weight;
-        }
-      }
 
-      return { x, y, log, prevDiff };
+      return { x, y, log };
     });
 
     // Grid lines values (horizontal lines)
-    const gridCount = 4;
+    const gridCount = 3;
     const gridLines = [];
     for (let i = 0; i <= gridCount; i++) {
       const value = allMin + (i / gridCount) * (allMax - allMin);
@@ -278,9 +315,9 @@ export default function WeightDetailModal({
     }
 
     // Goal line coordinates
-    const goalY = allMax !== allMin
+    const goalY = goalWeight > 0 && allMax !== allMin
       ? paddingTop + (1 - (goalWeight - allMin) / (allMax - allMin)) * chartHeight
-      : paddingTop + chartHeight / 2;
+      : null;
 
     // SVG Line paths
     let linePath = '';
@@ -289,7 +326,6 @@ export default function WeightDetailModal({
     if (points.length > 0) {
       linePath = `M ${points[0].x} ${points[0].y} ` + points.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ');
       
-      // Area path closed at bottom of the chart area
       areaPath = `M ${points[0].x} ${height - paddingBottom} L ${points[0].x} ${points[0].y} ` +
         points.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ') +
         ` L ${points[points.length - 1].x} ${height - paddingBottom} Z`;
@@ -310,7 +346,7 @@ export default function WeightDetailModal({
       allMin,
       allMax
     };
-  }, [filteredLogs, sortedLogs, goalWeight]);
+  }, [filteredLogs, goalWeight]);
 
   return (
     <AnimatePresence>
@@ -322,115 +358,119 @@ export default function WeightDetailModal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-slate-950/80 backdrop-blur-md cursor-pointer"
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs cursor-pointer"
           />
 
-          {/* Modal Container */}
+          {/* Modal Container: Compact Decision Analysis Modal */}
           <motion.div
             ref={modalRef}
-            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+            initial={{ opacity: 0, scale: 0.96, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 15 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-            className="relative w-full h-full sm:h-auto sm:max-w-3xl bg-slate-900 border border-slate-800/80 rounded-none sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden max-h-full"
+            exit={{ opacity: 0, scale: 0.96, y: 8 }}
+            transition={{ type: 'spring', damping: 26, stiffness: 360 }}
+            className="relative w-full sm:max-w-xl md:max-w-[620px] bg-slate-900 border border-slate-800/80 rounded-none sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[95vh]"
             role="dialog"
             aria-modal="true"
-            aria-label="체중 변화 분석 모달"
+            aria-label="체중 추이 분석"
           >
-            {/* Header */}
-            <div className="px-6 py-5 border-b border-slate-800/60 flex items-center justify-between">
+            {/* Header: Clean, direct, minimal */}
+            <div className="px-5 py-2.5 sm:py-3 border-b border-slate-800/50 flex items-center justify-between shrink-0">
               <div>
-                <h3 className="text-lg font-black font-sans text-white tracking-tight flex items-center gap-2">
-                  <BarChart2 className="w-5 h-5 text-indigo-400" />
-                  <span>체중 추이 분석</span>
+                <h3 className="text-base font-bold font-sans text-white tracking-tight">
+                  체중 추이 분석
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  최근 체중 변화와 목표 진행 상황입니다.
+                <p className="text-[11px] text-slate-500 mt-0.5 font-sans">
+                  목표 대비 현재 흐름
                 </p>
               </div>
               <button
                 type="button"
                 onClick={onClose}
                 aria-label="닫기"
-                className="w-9 h-9 rounded-xl bg-slate-800/50 hover:bg-slate-800 border border-slate-700/40 text-slate-400 hover:text-white flex items-center justify-center transition-all cursor-pointer"
+                className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 flex items-center justify-center transition-all cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+            {/* Modal Body: Compact Hierarchy, Zero Unneeded Scroll */}
+            <div className="p-4 sm:p-5 space-y-2.5 overflow-y-auto">
               
-              {/* Top Summary Row */}
+              {/* Primary Summary Strip: 3 Core Metrics (Section 4 & 5) */}
               {latestLog ? (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="bg-slate-950/40 border border-slate-800/60 p-3 rounded-2xl flex flex-col justify-between">
-                    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider block">현재 체중</span>
-                    <span className="text-2xl font-black font-sans text-white tracking-tight mt-0.5">
-                      {latestLog.weight.toFixed(1)}<span className="text-xs font-bold text-slate-400 ml-0.5">kg</span>
-                    </span>
-                    <span className="text-[9px] font-mono font-bold text-slate-500 mt-0.5 flex items-center gap-1">
-                      <Calendar className="w-3 h-3 text-slate-600" />
-                      {latestLog.date.replace(/-/g, '.')}
+                <div className="bg-slate-950/40 border border-slate-800/40 rounded-xl p-2.5 grid grid-cols-3 divide-x divide-slate-800/40">
+                  {/* 1. 현재 체중 */}
+                  <div className="px-2 first:pl-1">
+                    <span className="text-[11px] font-medium text-slate-400 block font-sans">현재 체중</span>
+                    <div className="flex items-baseline gap-0.5 mt-0.5">
+                      <span className="text-xl sm:text-2xl font-black font-sans text-white tabular-nums tracking-tight">
+                        {latestLog.weight.toFixed(1)}
+                      </span>
+                      <span className="text-xs font-semibold text-slate-400 font-sans">kg</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 mt-0.5 block font-mono">
+                      {formatCompactDate(latestLog.date)} 기준
                     </span>
                   </div>
 
-                  <div className="bg-slate-950/40 border border-slate-800/60 p-3 rounded-2xl flex flex-col justify-between">
-                    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider block">
-                      최근 변화 ({selectedPeriod === '7d' ? '7일' : selectedPeriod === '4w' ? '4주' : selectedPeriod === '3m' ? '3개월' : selectedPeriod === '1y' ? '1년' : '전체'})
+                  {/* 2. 목표까지 남은 차이 */}
+                  <div className="px-2">
+                    <span className="text-[11px] font-medium text-slate-400 block font-sans">
+                      {isGoalReached ? '목표 상태' : '목표까지'}
                     </span>
-                    <span className="text-lg font-bold font-sans text-white tracking-tight mt-0.5 flex items-baseline gap-1">
-                      <span className={stats.change > 0 ? 'text-rose-400' : stats.change < 0 ? 'text-emerald-400' : 'text-slate-300'}>
-                        {stats.change > 0 ? '+' : ''}{stats.change.toFixed(1)}
-                      </span>
-                      <span className="text-xs font-bold text-slate-400">kg</span>
-                    </span>
-                    <span className="text-[9px] font-mono font-bold text-slate-500 mt-0.5 flex items-center gap-1">
-                      {stats.change > 0 ? (
-                        <TrendingUp className="w-3 h-3 text-rose-500" />
-                      ) : stats.change < 0 ? (
-                        <TrendingDown className="w-3 h-3 text-emerald-500" />
+                    <div className="flex items-baseline gap-0.5 mt-0.5">
+                      {isGoalReached ? (
+                        <span className="text-xl sm:text-2xl font-black font-sans text-emerald-400 tracking-tight">
+                          도달
+                        </span>
+                      ) : goalWeight > 0 ? (
+                        <>
+                          <span className="text-xl sm:text-2xl font-black font-sans text-white tabular-nums tracking-tight">
+                            {absDiffToGoal.toFixed(1)}
+                          </span>
+                          <span className="text-xs font-semibold text-slate-400 font-sans">kg</span>
+                        </>
                       ) : (
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-500 mr-1" />
+                        <span className="text-sm font-bold text-slate-400">미설정</span>
                       )}
-                      <span>이전 대비</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 mt-0.5 block truncate font-sans">
+                      {goalWeight > 0 ? (
+                        isGoalReached 
+                          ? `목표 ${goalWeight.toFixed(1)}kg 달성` 
+                          : isGoalNear 
+                          ? `목표 근접 (${goalWeight.toFixed(1)}kg)` 
+                          : `목표 ${goalWeight.toFixed(1)}kg`
+                      ) : (
+                        '목표 미설정'
+                      )}
                     </span>
                   </div>
 
-                  <div className="bg-slate-950/40 border border-slate-800/60 p-3 rounded-2xl flex flex-col justify-between">
-                    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider block">목표 체중</span>
-                    <span className="text-lg font-bold font-sans text-white tracking-tight mt-0.5">
-                      {goalWeight.toFixed(1)}<span className="text-xs font-bold text-slate-400 ml-0.5">kg</span>
+                  {/* 3. 최근 변화 */}
+                  <div className="px-2 last:pr-1">
+                    <span className="text-[11px] font-medium text-slate-400 block truncate font-sans">
+                      {recentChangeLabel}
                     </span>
-                    <span className="text-[9px] font-mono font-bold text-indigo-400 mt-0.5 flex items-center gap-1">
-                      <Target className="w-3 h-3 text-indigo-500" />
-                      <span className="truncate">
-                        {stats.remainingToGoal > 0 
-                          ? `${stats.remainingToGoal.toFixed(1)}kg 증가 필요` 
-                          : stats.remainingToGoal < 0 
-                          ? `${Math.abs(stats.remainingToGoal).toFixed(1)}kg 감량 완료` 
-                          : '목표 달성'}
+                    <div className="flex items-baseline gap-0.5 mt-0.5">
+                      <span className="text-xl sm:text-2xl font-black font-sans text-white tabular-nums tracking-tight">
+                        {stats.change > 0 ? `+${stats.change.toFixed(1)}` : stats.change.toFixed(1)}
                       </span>
-                    </span>
-                  </div>
-
-                  <div className="bg-slate-950/40 border border-slate-800/60 p-3 rounded-2xl flex flex-col justify-between">
-                    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider block">목표 달성률</span>
-                    <span className="text-lg font-bold font-sans text-emerald-400 tracking-tight mt-0.5">
-                      {((latestLog.weight / goalWeight) * 100).toFixed(1)}%
-                    </span>
-                    <span className="text-[9px] font-mono font-bold text-emerald-500 mt-0.5 flex items-center gap-1">
-                      <Award className="w-3 h-3 text-emerald-500" />
-                      <span>체력 단련 수치</span>
+                      <span className="text-xs font-semibold text-slate-400 font-sans">kg</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 mt-0.5 block font-sans">
+                      {stats.change === 0 ? '변화 없음' : stats.change > 0 ? '증가' : '감소'}
                     </span>
                   </div>
                 </div>
               ) : null}
 
-              {/* Period Segmented Control */}
-              <div className="flex justify-between items-center bg-slate-950/30 p-1.5 rounded-2xl border border-slate-800/50">
-                <span className="text-[11px] font-bold text-slate-400 pl-2.5 font-sans">조회 기간</span>
-                <div className="flex gap-1">
+              {/* Chart Header with Integrated Period Selector (Section 6 & 7) */}
+              <div className="flex items-center justify-between gap-2 pt-0.5">
+                <span className="text-xs font-semibold text-slate-400 font-sans tracking-tight">
+                  체중 추이
+                </span>
+                <div className="inline-flex p-0.5 bg-slate-950/60 border border-slate-800/50 rounded-lg">
                   {(['7d', '4w', '3m', '1y', 'all'] as Period[]).map((period) => {
                     const labelMap: Record<Period, string> = {
                       '7d': '7일',
@@ -448,10 +488,10 @@ export default function WeightDetailModal({
                           setSelectedPeriod(period);
                           setHoveredPointIndex(null);
                         }}
-                        className={`text-xs font-bold font-sans px-3.5 py-1.5 rounded-xl transition-all cursor-pointer ${
+                        className={`text-xs px-2.5 py-0.5 rounded-md transition-all cursor-pointer font-sans ${
                           isActive
-                            ? 'bg-slate-800 text-white shadow-sm border border-slate-700/50'
-                            : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                            ? 'bg-slate-800 text-white font-semibold shadow-xs'
+                            : 'text-slate-400 hover:text-slate-200 font-medium'
                         }`}
                       >
                         {labelMap[period]}
@@ -461,56 +501,56 @@ export default function WeightDetailModal({
                 </div>
               </div>
 
-              {/* Interactive Line Chart */}
-              <div className="bg-slate-950/40 border border-slate-800/60 p-4 rounded-3xl relative overflow-visible min-h-[310px] flex flex-col justify-center">
+              {/* Main Interactive Chart: Hero Element */}
+              <div className="bg-slate-950/40 border border-slate-800/40 p-2 sm:p-2.5 rounded-xl relative overflow-visible flex flex-col justify-center">
                 {filteredLogs.length === 0 ? (
-                  <div className="py-12 text-center space-y-2 select-none">
-                    <p className="text-sm font-bold text-slate-400">아직 체중 기록이 없습니다.</p>
-                    <p className="text-xs text-slate-500">체중을 기록하면 변화 추이를 확인할 수 있습니다.</p>
+                  <div className="py-12 text-center space-y-1 select-none">
+                    <p className="text-sm font-semibold text-slate-300 font-sans">체중 기록이 없습니다.</p>
+                    <p className="text-xs text-slate-500 font-sans">체중을 기록하면 변화 추이를 분석할 수 있습니다.</p>
                   </div>
                 ) : chartData ? (
-                  <>
-                    <div className="relative w-full h-[280px] overflow-visible">
-                      <svg
-                        viewBox={`0 0 ${chartData.width} ${chartData.height}`}
-                        className="w-full h-full overflow-visible"
-                        preserveAspectRatio="none"
-                      >
-                        {/* Define gradients */}
-                        <defs>
-                          <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#6366f1" stopOpacity="0.32" />
-                            <stop offset="100%" stopColor="#6366f1" stopOpacity="0.00" />
-                          </linearGradient>
-                        </defs>
+                  <div className="relative w-full h-[200px] overflow-visible">
+                    <svg
+                      viewBox={`0 0 ${chartData.width} ${chartData.height}`}
+                      className="w-full h-full overflow-visible"
+                      preserveAspectRatio="none"
+                    >
+                      {/* Gradient */}
+                      <defs>
+                        <linearGradient id="weightChartGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.22" />
+                          <stop offset="100%" stopColor="#6366f1" stopOpacity="0.00" />
+                        </linearGradient>
+                      </defs>
 
-                        {/* Horizontal Grid lines */}
-                        {chartData.gridLines.map((line, idx) => (
-                          <g key={idx} className="opacity-40">
-                            <line
-                              x1={chartData.paddingLeft}
-                              y1={line.y}
-                              x2={chartData.width - chartData.paddingRight}
-                              y2={line.y}
-                              stroke="#334155"
-                              strokeWidth="1"
-                              strokeDasharray="2 3"
-                            />
-                            <text
-                              x={chartData.paddingLeft - 8}
-                              y={line.y + 4}
-                              fill="#94a3b8"
-                              fontSize="10"
-                              fontFamily="JetBrains Mono, monospace"
-                              fontWeight="bold"
-                              textAnchor="end"
-                            >
-                              {line.value.toFixed(1)}
-                            </text>
-                          </g>
-                        ))}
+                      {/* Horizontal Grid lines (Minimal & Dashed) */}
+                      {chartData.gridLines.map((line, idx) => (
+                        <g key={idx} className="opacity-15">
+                          <line
+                            x1={chartData.paddingLeft}
+                            y1={line.y}
+                            x2={chartData.width - chartData.paddingRight}
+                            y2={line.y}
+                            stroke="#475569"
+                            strokeWidth="1"
+                            strokeDasharray="2 3"
+                          />
+                          <text
+                            x={chartData.paddingLeft - 6}
+                            y={line.y + 3.5}
+                            fill="#64748b"
+                            fontSize="9"
+                            fontFamily="JetBrains Mono, monospace"
+                            fontWeight="500"
+                            textAnchor="end"
+                          >
+                            {line.value.toFixed(1)}
+                          </text>
+                        </g>
+                      ))}
 
-                        {/* Goal Weight Line */}
+                      {/* Goal Weight Dashed Line (Clean, low opacity, text on right) */}
+                      {chartData.goalY !== null && (
                         <g className="opacity-35">
                           <line
                             x1={chartData.paddingLeft}
@@ -519,257 +559,254 @@ export default function WeightDetailModal({
                             y2={chartData.goalY}
                             stroke="#10b981"
                             strokeWidth="1.2"
-                            strokeDasharray="6 6"
+                            strokeDasharray="3 3"
                           />
-                          {/* Goal Line Label Pin */}
                           <text
-                            x={chartData.width - chartData.paddingRight + 8}
+                            x={chartData.width - chartData.paddingRight + 6}
                             y={chartData.goalY + 3}
                             fill="#10b981"
-                            fontSize="10"
+                            fontSize="9"
                             fontFamily="JetBrains Mono, monospace"
-                            fontWeight="medium"
+                            fontWeight="600"
+                            opacity="0.8"
                           >
                             목표 {goalWeight.toFixed(1)}kg
                           </text>
                         </g>
-
-                        {/* Area Gradient Under the line */}
-                        {chartData.points.length > 1 && (
-                          <path
-                            d={chartData.areaPath}
-                            fill="url(#chartGradient)"
-                            className="transition-all duration-300"
-                          />
-                        )}
-
-                        {/* Main Trend Line */}
-                        {chartData.points.length > 1 && (
-                          <path
-                            d={chartData.linePath}
-                            fill="none"
-                            stroke="#6366f1"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="transition-all duration-300"
-                          />
-                        )}
-
-                        {/* Hover Cursor Vertical Line Indicator */}
-                        {hoveredPointIndex !== null && chartData.points[hoveredPointIndex] && (
-                          <line
-                            x1={chartData.points[hoveredPointIndex].x}
-                            y1={chartData.paddingTop}
-                            x2={chartData.points[hoveredPointIndex].x}
-                            y2={chartData.height - chartData.paddingBottom}
-                            stroke="#6366f1"
-                            strokeWidth="1.2"
-                            strokeDasharray="3 3"
-                            className="opacity-60"
-                          />
-                        )}
-
-                        {/* Point Circles & Hotspots */}
-                        {chartData.points.map((p, idx) => {
-                          const isHovered = hoveredPointIndex === idx;
-                          return (
-                            <g key={idx}>
-                              {/* Glowing background ring if hovered */}
-                              {isHovered && (
-                                <circle
-                                  cx={p.x}
-                                  cy={p.y}
-                                  r="9"
-                                  fill="#6366f1"
-                                  fillOpacity="0.25"
-                                />
-                              )}
-                              {/* Main Point */}
-                              <circle
-                                cx={p.x}
-                                cy={p.y}
-                                r={isHovered ? "5" : "3.5"}
-                                fill={isHovered ? "#6366f1" : "#1e1b4b"}
-                                stroke={isHovered ? "#ffffff" : "#6366f1"}
-                                strokeWidth={isHovered ? "1.5" : "1.8"}
-                                className="transition-all duration-700"
-                              />
-                              {/* Large Transparent Hotspot Overlay for easier mouse-over */}
-                              <circle
-                                cx={p.x}
-                                cy={p.y}
-                                r="18"
-                                fill="transparent"
-                                className="cursor-pointer"
-                                onMouseEnter={() => setHoveredPointIndex(idx)}
-                                onMouseLeave={() => setHoveredPointIndex(null)}
-                              />
-                            </g>
-                          );
-                        })}
-
-                        {/* X-axis date labels */}
-                        {chartData.points.length > 0 && (
-                          <g>
-                            {/* Always render first and last label, and middle if there are enough items */}
-                            {[
-                              0,
-                              Math.floor(chartData.points.length / 2),
-                              chartData.points.length - 1
-                            ].filter((val, index, self) => self.indexOf(val) === index && chartData.points[val]).map((val) => {
-                              const p = chartData.points[val];
-                              const isHovered = hoveredPointIndex === val;
-                              return (
-                                <text
-                                  key={val}
-                                  x={p.x}
-                                  y={chartData.height - 8}
-                                  fill={isHovered ? "#ffffff" : "#64748b"}
-                                  fontSize="9"
-                                  fontFamily="JetBrains Mono, monospace"
-                                  fontWeight={isHovered ? "bold" : "medium"}
-                                  textAnchor="middle"
-                                  className="transition-colors duration-150 select-none"
-                                >
-                                  {formatXAxisMonth(p.log.date)}
-                                </text>
-                              );
-                            })}
-                          </g>
-                        )}
-                      </svg>
-
-                      {/* Floating HTML Chart Tooltip */}
-                      {hoveredPointIndex !== null && chartData.points[hoveredPointIndex] && (
-                        (() => {
-                          const p = chartData.points[hoveredPointIndex];
-                          const widthPct = (p.x / chartData.width) * 100;
-                          const heightPct = (p.y / chartData.height) * 100;
-
-                          return (
-                            <div
-                              className="absolute z-20 pointer-events-none bg-slate-950/95 border border-slate-800 rounded-xl p-3 shadow-xl flex flex-col gap-1 min-w-[130px] font-mono text-[10px] text-slate-300 transition-all duration-75"
-                              style={{
-                                left: `${widthPct}%`,
-                                top: `${heightPct - 35}%`,
-                                transform: 'translate(-50%, -100%)'
-                              }}
-                            >
-                              <div className="text-slate-500 font-bold border-b border-slate-800/80 pb-1 mb-1 flex items-center justify-between">
-                                <span>RECORD</span>
-                                <span className="text-slate-400">{p.log.date.replace(/-/g, '.')}</span>
-                              </div>
-                              <div className="flex justify-between items-baseline">
-                                <span className="font-sans font-bold text-slate-400">체중</span>
-                                <span className="text-xs font-black text-white">{p.log.weight.toFixed(1)} kg</span>
-                              </div>
-                              {hoveredPointIndex > 0 && (
-                                <div className="flex justify-between items-center mt-0.5">
-                                  <span className="text-slate-500">직전 대비</span>
-                                  <span className={`font-bold flex items-center gap-0.5 ${p.prevDiff > 0 ? 'text-rose-400' : p.prevDiff < 0 ? 'text-emerald-400' : 'text-slate-400'}`}>
-                                    {p.prevDiff > 0 ? '+' : ''}{p.prevDiff.toFixed(1)}kg
-                                    {p.prevDiff > 0 ? (
-                                      <TrendingUp className="w-2.5 h-2.5 inline" />
-                                    ) : p.prevDiff < 0 ? (
-                                      <TrendingDown className="w-2.5 h-2.5 inline" />
-                                    ) : null}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()
                       )}
-                    </div>
-                  </>
+
+                      {/* Area Gradient Under Trend Line */}
+                      {chartData.points.length > 1 && (
+                        <path
+                          d={chartData.areaPath}
+                          fill="url(#weightChartGradient)"
+                          className="transition-all duration-300"
+                        />
+                      )}
+
+                      {/* Main Trend Line */}
+                      {chartData.points.length > 1 && (
+                        <path
+                          d={chartData.linePath}
+                          fill="none"
+                          stroke="#6366f1"
+                          strokeWidth="2.2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="transition-all duration-300"
+                        />
+                      )}
+
+                      {/* Hover Indicator Vertical Line */}
+                      {hoveredPointIndex !== null && chartData.points[hoveredPointIndex] && (
+                        <line
+                          x1={chartData.points[hoveredPointIndex].x}
+                          y1={chartData.paddingTop}
+                          x2={chartData.points[hoveredPointIndex].x}
+                          y2={chartData.height - chartData.paddingBottom}
+                          stroke="#6366f1"
+                          strokeWidth="1.2"
+                          strokeDasharray="3 3"
+                          className="opacity-50"
+                        />
+                      )}
+
+                      {/* Points with Highlight for the Latest Point */}
+                      {chartData.points.map((p, idx) => {
+                        const isHovered = hoveredPointIndex === idx;
+                        const isLatest = idx === chartData.points.length - 1;
+
+                        return (
+                          <g key={idx}>
+                            {/* Hover Halo */}
+                            {isHovered && (
+                              <circle
+                                cx={p.x}
+                                cy={p.y}
+                                r="7.5"
+                                fill="#6366f1"
+                                fillOpacity="0.25"
+                              />
+                            )}
+                            
+                            {/* Latest Point Subtle Ring (Current Position Focus) */}
+                            {isLatest && !isHovered && (
+                              <circle
+                                cx={p.x}
+                                cy={p.y}
+                                r="5.5"
+                                fill="#6366f1"
+                                fillOpacity="0.2"
+                              />
+                            )}
+
+                            {/* Point Core */}
+                            <circle
+                              cx={p.x}
+                              cy={p.y}
+                              r={isHovered ? "4" : isLatest ? "3.6" : "2.5"}
+                              fill={isHovered || isLatest ? "#6366f1" : "#1e1b4b"}
+                              stroke={isHovered || isLatest ? "#ffffff" : "#6366f1"}
+                              strokeWidth={isHovered || isLatest ? "1.5" : "1"}
+                              className="transition-all duration-200"
+                            />
+
+                            {/* Generous Hitbox */}
+                            <circle
+                              cx={p.x}
+                              cy={p.y}
+                              r="16"
+                              fill="transparent"
+                              className="cursor-pointer"
+                              onMouseEnter={() => setHoveredPointIndex(idx)}
+                              onMouseLeave={() => setHoveredPointIndex(null)}
+                            />
+                          </g>
+                        );
+                      })}
+
+                      {/* X-axis date labels */}
+                      {chartData.points.length > 0 && (
+                        <g>
+                          {[
+                            0,
+                            Math.floor(chartData.points.length / 2),
+                            chartData.points.length - 1
+                          ].filter((val, index, self) => self.indexOf(val) === index && chartData.points[val]).map((val) => {
+                            const p = chartData.points[val];
+                            const isHovered = hoveredPointIndex === val;
+                            return (
+                              <text
+                                key={val}
+                                x={p.x}
+                                y={chartData.height - 6}
+                                fill={isHovered ? "#ffffff" : "#64748b"}
+                                fontSize="9"
+                                fontFamily="JetBrains Mono, monospace"
+                                fontWeight={isHovered ? "bold" : "500"}
+                                textAnchor="middle"
+                                className="transition-colors duration-150 select-none"
+                              >
+                                {formatXAxisDate(p.log.date, selectedPeriod)}
+                              </text>
+                            );
+                          })}
+                        </g>
+                      )}
+                    </svg>
+
+                    {/* Tooltip: Compact & Decision-Oriented (Section 8) */}
+                    {hoveredPointIndex !== null && chartData.points[hoveredPointIndex] && (
+                      (() => {
+                        const p = chartData.points[hoveredPointIndex];
+                        const widthPct = (p.x / chartData.width) * 100;
+                        const heightPct = (p.y / chartData.height) * 100;
+                        const diffFromGoal = goalWeight > 0 ? p.log.weight - goalWeight : null;
+                        const isFarRight = widthPct > 75;
+                        const isFarLeft = widthPct < 25;
+                        const transformX = isFarRight ? '-85%' : isFarLeft ? '-15%' : '-50%';
+
+                        return (
+                          <div
+                            className="absolute z-20 pointer-events-none bg-slate-950/95 border border-slate-800 rounded-lg px-2.5 py-1.5 shadow-xl flex flex-col gap-0.5 min-w-[105px] font-mono text-[10px] text-slate-300 transition-all duration-75"
+                            style={{
+                              left: `${widthPct}%`,
+                              top: `${heightPct}%`,
+                              transform: `translate(${transformX}, -120%)`
+                            }}
+                          >
+                            <div className="text-slate-400 font-medium border-b border-slate-800/80 pb-0.5 flex items-center justify-between">
+                              <span>{p.log.date.replace(/-/g, '.')}</span>
+                            </div>
+                            <div className="flex justify-between items-baseline pt-0.5">
+                              <span className="font-sans text-slate-400">체중</span>
+                              <span className="text-xs font-bold text-white">{p.log.weight.toFixed(1)} kg</span>
+                            </div>
+                            {goalWeight > 0 && diffFromGoal !== null && (
+                              <div className="flex justify-between items-center text-[9px] text-slate-400 pt-0.5 border-t border-slate-900">
+                                <span>목표 대비</span>
+                                <span className="font-semibold text-slate-300">
+                                  {diffFromGoal > 0 ? `+${diffFromGoal.toFixed(1)}` : diffFromGoal.toFixed(1)}kg
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()
+                    )}
+                  </div>
                 ) : null}
               </div>
 
-              {/* Bottom Details Grid Cards & Insights */}
-              {latestLog ? (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div className="bg-slate-950/20 border border-slate-800/20 p-2.5 rounded-2xl flex flex-col justify-between">
-                      <span className="text-[10px] font-mono text-slate-500 font-bold block uppercase">최고 체중</span>
-                      <span className="text-base font-black font-sans text-white tracking-tight mt-0.5">
-                        {stats.highest.weight.toFixed(1)}<span className="text-[11px] font-bold text-slate-400 ml-0.5">kg</span>
+              {/* Secondary Statistics: Compact, low-contrast row without heavy card borders (Section 10, 11) */}
+              {latestLog && filteredLogs.length > 0 ? (
+                <div className="bg-slate-950/20 rounded-lg px-3 py-1.5 grid grid-cols-3 divide-x divide-slate-800/30">
+                  {/* 최고 */}
+                  <div className="px-2 first:pl-0 flex items-baseline justify-between sm:justify-start sm:gap-2">
+                    <span className="text-[10px] font-medium text-slate-500 font-sans">최고</span>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-xs font-semibold text-slate-300 tabular-nums font-sans">
+                        {stats.highest.weight.toFixed(1)}kg
                       </span>
-                      <span className="text-[9px] font-mono text-slate-500 mt-0.5 block truncate">
-                        {stats.highest.date.replace(/-/g, '.')}
-                      </span>
-                    </div>
-
-                    <div className="bg-slate-950/20 border border-slate-800/20 p-2.5 rounded-2xl flex flex-col justify-between">
-                      <span className="text-[10px] font-mono text-slate-500 font-bold block uppercase">최저 체중</span>
-                      <span className="text-base font-black font-sans text-white tracking-tight mt-0.5">
-                        {stats.lowest.weight.toFixed(1)}<span className="text-[11px] font-bold text-slate-400 ml-0.5">kg</span>
-                      </span>
-                      <span className="text-[9px] font-mono text-slate-500 mt-0.5 block truncate">
-                        {stats.lowest.date.replace(/-/g, '.')}
-                      </span>
-                    </div>
-
-                    <div className="bg-slate-950/20 border border-slate-800/20 p-2.5 rounded-2xl flex flex-col justify-between">
-                      <span className="text-[10px] font-mono text-slate-500 font-bold block uppercase">평균 체중</span>
-                      <span className="text-base font-black font-sans text-white tracking-tight mt-0.5">
-                        {stats.average.toFixed(1)}<span className="text-[11px] font-bold text-slate-400 ml-0.5">kg</span>
-                      </span>
-                      <span className="text-[9px] font-mono text-indigo-400 mt-0.5 block truncate">
-                        {stats.avgPast7Days > 0 ? `7일 평균: ${stats.avgPast7Days.toFixed(1)}kg` : '현재 구간 평균'}
-                      </span>
-                    </div>
-
-                    <div className="bg-slate-950/20 border border-slate-800/20 p-2.5 rounded-2xl flex flex-col justify-between">
-                      <span className="text-[10px] font-mono text-slate-500 font-bold block uppercase">최근 변화량</span>
-                      <span className="text-base font-black font-sans text-white tracking-tight mt-0.5">
-                        <span className={stats.change > 0 ? 'text-rose-400' : stats.change < 0 ? 'text-emerald-400' : 'text-slate-300'}>
-                          {stats.change > 0 ? '+' : ''}{stats.change.toFixed(1)}
+                      {stats.highest.date && (
+                        <span className="text-[10px] font-mono text-slate-500">
+                          · {formatCompactDate(stats.highest.date)}
                         </span>
-                        <span className="text-[11px] font-bold text-slate-400 ml-0.5">kg</span>
-                      </span>
-                      <span className="text-[9px] font-mono text-slate-500 mt-0.5 block">
-                        구간 시점 대비 종점
-                      </span>
+                      )}
                     </div>
                   </div>
 
-                  {/* Auto-generated Insight Row */}
-                  {weightInsight && (
-                    <div className="bg-indigo-950/20 border border-indigo-500/10 rounded-xl p-3 flex items-start gap-2.5">
-                      <div className="p-1 bg-indigo-500/10 text-indigo-400 rounded-lg border border-indigo-500/20 mt-0.5 shrink-0">
-                        <BarChart2 className="w-3.5 h-3.5" />
-                      </div>
-                      <p className="text-xs text-slate-300 leading-relaxed font-sans font-medium">
-                        {weightInsight}
-                      </p>
+                  {/* 최저 */}
+                  <div className="px-2 flex items-baseline justify-between sm:justify-start sm:gap-2">
+                    <span className="text-[10px] font-medium text-slate-500 font-sans">최저</span>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-xs font-semibold text-slate-300 tabular-nums font-sans">
+                        {stats.lowest.weight.toFixed(1)}kg
+                      </span>
+                      {stats.lowest.date && (
+                        <span className="text-[10px] font-mono text-slate-500">
+                          · {formatCompactDate(stats.lowest.date)}
+                        </span>
+                      )}
                     </div>
-                  )}
+                  </div>
+
+                  {/* 기간 평균 */}
+                  <div className="px-2 last:pr-0 flex items-baseline justify-between sm:justify-start sm:gap-2">
+                    <span className="text-[10px] font-medium text-slate-500 font-sans">평균</span>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-xs font-semibold text-slate-300 tabular-nums font-sans">
+                        {stats.average.toFixed(1)}kg
+                      </span>
+                    </div>
+                  </div>
                 </div>
               ) : null}
 
+              {/* One-line Inline Insight: Non-card, judgment-focused status (Section 12 & 13) */}
+              {weightInsight && (
+                <div className="flex items-center gap-1.5 px-1 py-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400/80 shrink-0" />
+                  <p className="text-xs text-slate-400 font-medium font-sans">
+                    {weightInsight}
+                  </p>
+                </div>
+              )}
+
             </div>
 
-            {/* Footer buttons */}
-            <div className="px-5 py-3 bg-slate-950/40 border-t border-slate-800/60 flex items-center justify-between gap-3 shrink-0">
+            {/* Compact CTA Footer: Simplified, duplicate Close removed (Section 14 Option A, 15) */}
+            <div className="px-5 py-2.5 bg-slate-950/30 border-t border-slate-800/50 flex items-center justify-end shrink-0">
               <button
                 type="button"
                 onClick={() => {
                   onClose();
                   onRecordWeightClick();
                 }}
-                className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-black tracking-wider rounded-xl shadow-md transition-all duration-150 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
               >
-                <Plus className="w-3.5 h-3.5 stroke-[3px]" />
-                <span>체중 기록하러 가기</span>
-              </button>
-              
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-slate-200 hover:text-white text-xs font-bold rounded-xl border border-slate-700/50 transition-all duration-150 cursor-pointer focus:outline-none focus:ring-2 focus:ring-slate-500/20"
-              >
-                닫기
+                <Plus className="w-3.5 h-3.5 stroke-[2.5px]" />
+                <span>체중 기록하기</span>
               </button>
             </div>
           </motion.div>
@@ -778,3 +815,4 @@ export default function WeightDetailModal({
     </AnimatePresence>
   );
 }
+

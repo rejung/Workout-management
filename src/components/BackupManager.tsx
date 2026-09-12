@@ -5,7 +5,7 @@
 
 import { useRef, useState, ChangeEvent, useEffect } from 'react';
 import { WorkoutLog, Routine, Exercise, ApplicationSnapshot } from '../types';
-import { WeightLog, getMaxE1RMForExercise, isSquat, isBenchPress, isDeadlift, isOHP } from '../utils/workoutEngine';
+import { WeightLog, getMaxE1RMForExercise, roundE1RM, isSquat, isBenchPress, isDeadlift, isOHP } from '../utils/workoutEngine';
 import { Download, Upload, Trash2, ShieldAlert, CheckCircle2, HelpCircle, FileSpreadsheet, Activity, Cloud, CloudUpload, CloudDownload, RefreshCw, LogOut } from 'lucide-react';
 import { parseV1Excel, MigrationPreview } from '../utils/v1Migration';
 import { formatWorkoutDateShort, getLocalDateString } from '../utils/dateUtils';
@@ -1019,7 +1019,7 @@ export default function BackupManager({
                   const isSelectedNotWarmup = selectedSet ? !selectedSet.rawSetRecord?.isWarmup : true;
                   
                   // Rule 5: Dashboard 계산값은 selected 세트로부터 계산되어야 한다
-                  const isDashboardMatch = lift.v1Val === null || Math.abs(Math.round(result.maxE1RM) - lift.v1Val) <= 1.5;
+                  const isDashboardMatch = lift.v1Val === null || Math.abs(roundE1RM(result.maxE1RM) - lift.v1Val) <= 1.5;
 
                   const passed = isSelectedCountValid && isCandidateE1RMValid && isSelectedMax && isSelectedNotWarmup && isDashboardMatch;
                   
@@ -1049,7 +1049,7 @@ export default function BackupManager({
                 
                 const isSelectedCountConsistent = totalSelectedCount === expectedSelectedCount;
                 const isE1RMMatchesConsistent = liftValidations.every(l => l.selectedSet ? Math.abs(l.selectedSet.calculatedE1RM - l.maxCandidateE1RM) < 0.0001 : true);
-                const isDashboardConsistent = liftValidations.every(l => l.v1Val === null || Math.abs(Math.round(l.result.maxE1RM) - l.v1Val) <= 1.5);
+                const isDashboardConsistent = liftValidations.every(l => l.v1Val === null || Math.abs(roundE1RM(l.result.maxE1RM) - l.v1Val) <= 1.5);
 
                 const enginePassed = isSelectedCountConsistent && isE1RMMatchesConsistent && isDashboardConsistent && liftValidations.every(l => l.passed);
 
