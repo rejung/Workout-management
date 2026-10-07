@@ -49,6 +49,26 @@ export const storage = {
     }
   },
 
+  getRawItem(key: string): string | null {
+    try {
+      const store = getStore();
+      return store.getItem(key);
+    } catch (error) {
+      console.error(`Error reading raw key "${key}" from storage:`, error);
+      return null;
+    }
+  },
+
+  setRawItem(key: string, value: string): void {
+    try {
+      const store = getStore();
+      store.setItem(key, value);
+    } catch (error) {
+      console.error(`Error writing raw key "${key}" to storage:`, error);
+      throw error;
+    }
+  },
+
   setItem<T>(key: string, value: T): void {
     try {
       const store = getStore();

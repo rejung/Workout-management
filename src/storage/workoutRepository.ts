@@ -15,23 +15,11 @@ const ROUTINES_KEY = 'wms_routines';
 const EXERCISES_KEY = 'wms_exercises';
 
 function getRawStorageItem(key: string): string | null {
-  if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
-    return window.localStorage.getItem(key);
-  }
-  if (typeof localStorage !== 'undefined') {
-    return localStorage.getItem(key);
-  }
-  return null;
+  return storage.getRawItem(key);
 }
 
 function setRawStorageItem(key: string, value: string): void {
-  if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
-    window.localStorage.setItem(key, value);
-    return;
-  }
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem(key, value);
-  }
+  storage.setRawItem(key, value);
 }
 
 export function isRemovedExerciseName(name: string): boolean {

@@ -11,6 +11,14 @@ import { parseV1Excel, MigrationPreview } from '../utils/v1Migration';
 import { formatWorkoutDateShort, getLocalDateString } from '../utils/dateUtils';
 import { goalRepository } from '../storage/goalRepository';
 import { snapshotService, RestoreSummary, SnapshotValidationResult } from '../services/snapshotService';
+import { 
+  CURRENT_SNAPSHOT_VERSION, 
+  CURRENT_SCHEMA_VERSION, 
+  SNAPSHOT_APP_NAME, 
+  SNAPSHOT_TYPE 
+} from '../constants';
+import { storage } from '../storage/storage';
+import { calculateSnapshotStatistics } from '../services/snapshotValidator';
 import { User } from 'firebase/auth';
 import {
   initAuth,
@@ -390,14 +398,62 @@ export default function BackupManager({
 
   const handleRunDiagnostics = () => {
     setIsTesting(true);
+    setDiagnosticResult(null);
     try {
-      const snapshot = snapshotService.createSnapshot(logs, weightLogs || [], routines, exercises);
-      const validation = snapshotService.validateSnapshot(snapshot);
+      const nowIso = new Date().toISOString();
+      const stats = calculateSnapshotStatistics(logs, weightLogs || []);
+
+      const rawGoalSettings = storage.getRawItem('wms_goal_settings');
+      let parsedGoalSettings: any = undefined;
+
+      if (rawGoalSettings !== null) {
+        try {
+          parsedGoalSettings = JSON.parse(rawGoalSettings);
+        } catch (parseErr: any) {
+          setIsTesting(false);
+          const parseFailResult: SnapshotValidationResult = {
+            isValid: false,
+            error: `목표 설정 데이터 손상 (JSON 파싱 실패): ${parseErr.message || parseErr}`,
+            snapshot: null,
+            healthScore: 0,
+            healthReasons: ['목표 설정 JSON 파싱 오류 발견', '데이터 구조 오류 발견'],
+            statistics: stats
+          };
+          setDiagnosticResult(parseFailResult);
+          showAlert(`진단 실패: 목표 설정 데이터가 손상되었습니다.`, '시스템 진단 오류');
+          return;
+        }
+      }
+
+      const diagnosticSnapshot: ApplicationSnapshot = {
+        version: CURRENT_SNAPSHOT_VERSION,
+        exportedAt: nowIso,
+        exportDate: nowIso,
+        metadata: {
+          appName: SNAPSHOT_APP_NAME,
+          snapshotType: SNAPSHOT_TYPE,
+          schemaVersion: CURRENT_SCHEMA_VERSION,
+          statistics: stats
+        },
+        workoutLogs: logs,
+        logs: logs,
+        weightLogs: weightLogs || [],
+        routines: routines,
+        exercises: exercises,
+        routineSettings: {
+          routines: routines,
+          exercises: exercises
+        },
+        ...(parsedGoalSettings !== undefined ? { goalSettings: parsedGoalSettings } : {})
+      };
+
+      const validation = snapshotService.validateSnapshot(diagnosticSnapshot);
       setDiagnosticResult(validation);
       setIsTesting(false);
       showFeedback(`스냅샷 무결성 진단 완료 (건강도: ${validation.healthScore}점, 상태: ${validation.isValid ? '정상' : '오류'})`);
     } catch (e: any) {
       setIsTesting(false);
+      setDiagnosticResult(null);
       showAlert(`진단 실패: ${e.message}`, '시스템 진단 오류');
     }
   };
