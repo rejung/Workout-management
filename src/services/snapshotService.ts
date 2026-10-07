@@ -13,10 +13,12 @@ import {
   CURRENT_SCHEMA_VERSION, 
   SNAPSHOT_APP_NAME, 
   SNAPSHOT_TYPE, 
-  EXPORT_FILENAME_PREFIX 
+  EXPORT_FILENAME_PREFIX,
+  DEFAULT_EXERCISES
 } from '../constants';
 import { validateSnapshotDeep, calculateSnapshotStatistics, formatBytes } from './snapshotValidator';
 import { WeightLog } from '../utils/workoutEngine';
+import { applyCanonicalExerciseMigration } from '../domain/exerciseCanonicalDomain';
 
 export interface SnapshotValidationResult {
   isValid: boolean;
@@ -312,16 +314,57 @@ export const snapshotService = {
     }
 
     const validData = validation.snapshot;
-    const logsData = validData.workoutLogs || [];
+    const rawLogsData = validData.workoutLogs || [];
     const weightLogsData = validData.weightLogs || [];
-    const routinesData = validData.routines || fallbackRoutines;
-    const exercisesData = validData.exercises || fallbackExercises;
+    const rawRoutinesData = validData.routines || fallbackRoutines;
+    const rawExercisesData = validData.exercises || fallbackExercises;
     const goalSettingsData = validData.goalSettings || null;
 
-    // Step 2: Capture Pre-Restore State across all storage targets
+    // Step 2: Apply Canonical Exercise Integration (Change Unit 1 - Groups 1 to 5)
+    const migrationResult = applyCanonicalExerciseMigration(
+      rawLogsData,
+      rawRoutinesData,
+      rawExercisesData,
+      DEFAULT_EXERCISES
+    );
+
+    const logsData = migrationResult.updatedLogs;
+    const routinesData = migrationResult.updatedRoutines;
+    const exercisesData = migrationResult.updatedExercises;
+
+    // Pre-save validation of transformed data & statistics recalculation
+    const stats = calculateSnapshotStatistics(logsData, weightLogsData);
+    const transformedSnapshot: ApplicationSnapshot = {
+      ...validData,
+      workoutLogs: logsData,
+      logs: logsData,
+      routines: routinesData,
+      exercises: exercisesData,
+      routineSettings: {
+        routines: routinesData,
+        exercises: exercisesData
+      },
+      metadata: {
+        appName: validData.metadata?.appName || SNAPSHOT_APP_NAME,
+        snapshotType: validData.metadata?.snapshotType || SNAPSHOT_TYPE,
+        schemaVersion: validData.metadata?.schemaVersion || CURRENT_SCHEMA_VERSION,
+        statistics: stats
+      }
+    };
+
+    const postMigrationValidation = this.validateSnapshot(transformedSnapshot);
+    if (!postMigrationValidation.isValid || !postMigrationValidation.snapshot) {
+      throw new Error(`Atomic Import Aborted: ${postMigrationValidation.error || 'Canonical Migration Validation Failed'}`);
+    }
+
+    const finalStatistics = postMigrationValidation.statistics;
+    const finalHealthScore = postMigrationValidation.healthScore;
+    const finalHealthReasons = postMigrationValidation.healthReasons;
+
+    // Step 3: Capture Pre-Restore State across all storage targets
     const preState = this.captureCurrentStorageState();
 
-    // Step 3: Execute sequential writes with Post-Write Verification & Compensating Rollback
+    // Step 4: Execute sequential writes with Post-Write Verification & Compensating Rollback
     try {
       workoutRepository.saveLogs(logsData);
       workoutRepository.saveRoutines(routinesData);
@@ -331,7 +374,7 @@ export const snapshotService = {
         goalRepository.saveGoalSettings(goalSettingsData as GoalSettings);
       }
 
-      // Step 4: Post-write storage integrity verification
+      // Step 5: Post-write storage integrity verification
       this.verifyStorageState({
         logs: logsData,
         routines: routinesData,
@@ -340,7 +383,7 @@ export const snapshotService = {
         goalSettings: goalSettingsData
       });
 
-      // Step 5: Notify UI/caller on verified success
+      // Step 6: Notify UI/caller on verified success
       if (onImportData) {
         onImportData({
           logs: logsData,
@@ -385,9 +428,9 @@ export const snapshotService = {
       hasGoalSettings: goalSettingsData !== null && typeof goalSettingsData === 'object',
       exportedAt: validData.exportedAt || validData.exportDate || null,
       version: validData.version || CURRENT_SNAPSHOT_VERSION,
-      statistics: validation.statistics,
-      healthScore: validation.healthScore,
-      healthReasons: validation.healthReasons
+      statistics: finalStatistics,
+      healthScore: finalHealthScore,
+      healthReasons: finalHealthReasons
     };
   },
 

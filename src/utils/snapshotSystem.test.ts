@@ -1051,6 +1051,275 @@ export function runSnapshotSystemTests(): TestSuiteSummary {
     recordResult('✅ 실제 Fixture 백업 스냅샷 호환성', false, err.message);
   }
 
+  // 34. ✅ [CU2 Scenario A] Legacy snapshot band-pull-up-simple -> band-pull-up
+  try {
+    const snapA = snapshotService.createSnapshot(
+      [
+        {
+          id: 'log-sc-a',
+          date: '2026-06-01',
+          notes: '',
+          exercises: [
+            {
+              exerciseId: 'band-pull-up-simple',
+              exerciseName: '밴드 풀업',
+              category: 'Back',
+              sets: [{ id: 's-a1', weight: 0, reps: 10, isWarmup: false }]
+            }
+          ]
+        }
+      ],
+      [],
+      [],
+      [
+        { id: 'band-pull-up-simple', name: '밴드 풀업', category: 'Back', logType: 'BODYWEIGHT_REPS', equipment: 'BAND' }
+      ]
+    );
+
+    snapshotService.restoreSnapshot(snapA);
+    const restoredLogsA = workoutRepository.getLogs();
+    const restoredExercisesA = workoutRepository.getExercises();
+
+    const logOk = restoredLogsA.length === 1 && restoredLogsA[0].exercises[0].exerciseId === 'band-pull-up';
+    const noDup = !restoredExercisesA.some(e => e.id === 'band-pull-up-simple');
+    const hasCanonical = restoredExercisesA.some(e => e.id === 'band-pull-up');
+
+    if (logOk && noDup && hasCanonical) {
+      recordResult('✅ [CU2 Scenario A] band-pull-up-simple 수렴', true, 'Legacy snapshot band-pull-up-simple이 canonical band-pull-up으로 수렴하고 duplicate 제거됨');
+    } else {
+      recordResult('✅ [CU2 Scenario A] band-pull-up-simple 수렴', false, `수렴 실패 (logOk: ${logOk}, noDup: ${noDup}, hasCanonical: ${hasCanonical})`);
+    }
+  } catch (err: any) {
+    recordResult('✅ [CU2 Scenario A] band-pull-up-simple 수렴', false, err.message);
+  }
+
+  // 35. ✅ [CU2 Scenario B] cable-row / custom-cable-row / seated-cable-row -> seated-row
+  try {
+    const snapB = snapshotService.createSnapshot(
+      [
+        {
+          id: 'log-sc-b1',
+          date: '2026-06-02',
+          notes: '',
+          exercises: [
+            {
+              exerciseId: 'cable-row',
+              exerciseName: '케이블 로우',
+              category: 'Back',
+              sets: [{ id: 'sb-1', weight: 40, reps: 12 }]
+            }
+          ]
+        },
+        {
+          id: 'log-sc-b2',
+          date: '2026-06-03',
+          notes: '',
+          exercises: [
+            {
+              exerciseId: 'custom-cable-row',
+              exerciseName: '시티드 케이블 로우',
+              category: 'Back',
+              sets: [{ id: 'sb-2', weight: 45, reps: 10 }]
+            }
+          ]
+        }
+      ],
+      [],
+      [
+        {
+          id: 'routine-sc-b',
+          name: '등 운동',
+          description: '',
+          exercises: [
+            { exerciseId: 'seated-cable-row', exerciseName: '시티드 케이블 로우', category: 'Back', targetSetsCount: 4 }
+          ]
+        }
+      ],
+      [
+        { id: 'cable-row', name: '케이블 로우', category: 'Back', logType: 'STANDARD', equipment: 'CABLE' },
+        { id: 'custom-cable-row', name: '시티드 케이블 로우', category: 'Back', logType: 'STANDARD', equipment: 'CABLE' }
+      ]
+    );
+
+    snapshotService.restoreSnapshot(snapB);
+    const restoredLogsB = workoutRepository.getLogs();
+    const restoredRoutinesB = workoutRepository.getRoutines();
+    const restoredExercisesB = workoutRepository.getExercises();
+
+    const logsMigrated = restoredLogsB.length === 2 &&
+      restoredLogsB[0].exercises[0].exerciseId === 'seated-row' &&
+      restoredLogsB[1].exercises[0].exerciseId === 'seated-row';
+    const routineMigrated = restoredRoutinesB.length === 1 &&
+      restoredRoutinesB[0].exercises[0].exerciseId === 'seated-row';
+    const noDuplicates = !restoredExercisesB.some(e => ['cable-row', 'custom-cable-row', 'seated-cable-row'].includes(e.id));
+    const hasCanonicalSeated = restoredExercisesB.some(e => e.id === 'seated-row');
+
+    if (logsMigrated && routineMigrated && noDuplicates && hasCanonicalSeated) {
+      recordResult('✅ [CU2 Scenario B] cable-row 계열 seated-row 3->1 수렴', true, '혼재된 cable-row, custom-cable-row, seated-cable-row가 seated-row로 100% 수렴');
+    } else {
+      recordResult('✅ [CU2 Scenario B] cable-row 계열 seated-row 3->1 수렴', false, `수렴 실패 (logs: ${logsMigrated}, routine: ${routineMigrated}, noDuplicates: ${noDuplicates}, hasCanonical: ${hasCanonicalSeated})`);
+    }
+  } catch (err: any) {
+    recordResult('✅ [CU2 Scenario B] cable-row 계열 seated-row 3->1 수렴', false, err.message);
+  }
+
+  // 36. ✅ [CU2 Scenario C] one-arm-dumbbell-row -> dumbbell-row (참조 이동 + 중량/세트 보존)
+  try {
+    const snapC = snapshotService.createSnapshot(
+      [
+        {
+          id: 'log-sc-c',
+          date: '2026-06-04',
+          notes: '',
+          exercises: [
+            {
+              exerciseId: 'one-arm-dumbbell-row',
+              exerciseName: '원암 덤벨 로우',
+              category: 'Back',
+              sets: [
+                { id: 'sc-1', weight: 24, reps: 10, isWarmup: false },
+                { id: 'sc-2', weight: 26, reps: 8, isWarmup: false }
+              ]
+            }
+          ]
+        }
+      ],
+      [],
+      [],
+      [
+        { id: 'one-arm-dumbbell-row', name: '원암 덤벨 로우', category: 'Back', logType: 'STANDARD', equipment: 'DUMBBELL' }
+      ]
+    );
+
+    snapshotService.restoreSnapshot(snapC);
+    const restoredLogsC = workoutRepository.getLogs();
+    const restoredExercisesC = workoutRepository.getExercises();
+
+    const logC = restoredLogsC[0];
+    const exRefOk = logC?.exercises[0]?.exerciseId === 'dumbbell-row';
+    const setsPreserved = logC?.exercises[0]?.sets[0].weight === 24 && logC?.exercises[0]?.sets[1].weight === 26;
+    const hasCanonical = restoredExercisesC.some(e => e.id === 'dumbbell-row');
+    const noDup = !restoredExercisesC.some(e => e.id === 'one-arm-dumbbell-row');
+
+    if (exRefOk && setsPreserved && hasCanonical && noDup) {
+      recordResult('✅ [CU2 Scenario C] one-arm-dumbbell-row -> dumbbell-row 수렴', true, 'WorkoutLog 참조 이동 완료 및 24kg/26kg 중량/세트 완벽 보존');
+    } else {
+      recordResult('✅ [CU2 Scenario C] one-arm-dumbbell-row -> dumbbell-row 수렴', false, `수렴 실패 (exRefOk: ${exRefOk}, setsPreserved: ${setsPreserved})`);
+    }
+  } catch (err: any) {
+    recordResult('✅ [CU2 Scenario C] one-arm-dumbbell-row -> dumbbell-row 수렴', false, err.message);
+  }
+
+  // 37. ✅ [CU2 Scenario D] Routine duplicate ID -> canonical ID 변경 (targetSets 보존)
+  try {
+    const snapD = snapshotService.createSnapshot(
+      [],
+      [],
+      [
+        {
+          id: 'routine-sc-d',
+          name: '팔 루틴',
+          description: '삼두 집중',
+          exercises: [
+            { exerciseId: 'cable-pushdown', exerciseName: '케이블 푸시다운', category: 'Arms', targetSetsCount: 5 }
+          ]
+        }
+      ],
+      [
+        { id: 'cable-pushdown', name: '케이블 푸시다운', category: 'Arms', logType: 'STANDARD', equipment: 'CABLE' }
+      ]
+    );
+
+    snapshotService.restoreSnapshot(snapD);
+    const restoredRoutinesD = workoutRepository.getRoutines();
+    const restoredExercisesD = workoutRepository.getExercises();
+
+    const rD = restoredRoutinesD[0];
+    const routineIdOk = rD?.exercises[0]?.exerciseId === 'triceps-pushdown';
+    const targetSetsOk = rD?.exercises[0]?.targetSetsCount === 5;
+    const hasCanonical = restoredExercisesD.some(e => e.id === 'triceps-pushdown');
+    const noDup = !restoredExercisesD.some(e => e.id === 'cable-pushdown');
+
+    if (routineIdOk && targetSetsOk && hasCanonical && noDup) {
+      recordResult('✅ [CU2 Scenario D] Routine duplicate ID -> canonical 수렴', true, 'Routine duplicate ID가 triceps-pushdown으로 변경되고 targetSetsCount 5 유지됨');
+    } else {
+      recordResult('✅ [CU2 Scenario D] Routine duplicate ID -> canonical 수렴', false, `수렴 실패 (routineIdOk: ${routineIdOk}, targetSetsOk: ${targetSetsOk})`);
+    }
+  } catch (err: any) {
+    recordResult('✅ [CU2 Scenario D] Routine duplicate ID -> canonical 수렴', false, err.message);
+  }
+
+  // 38. ✅ [CU2 Scenario E] Exercise 목록에는 duplicate 없지만 WorkoutLog만 legacy duplicate 참조 -> Dangling 없이 canonical 수렴
+  try {
+    const snapE = snapshotService.createSnapshot(
+      [
+        {
+          id: 'log-sc-e',
+          date: '2026-06-05',
+          notes: '',
+          exercises: [
+            {
+              exerciseId: 'band-pull-up-simple',
+              exerciseName: '밴드 풀업',
+              category: 'Back',
+              sets: [{ id: 'se-1', weight: 0, reps: 12 }]
+            }
+          ]
+        }
+      ],
+      [],
+      [],
+      [
+        { id: 'bench-press', name: 'Bench Press', category: 'Chest' }
+      ]
+    );
+
+    snapshotService.restoreSnapshot(snapE);
+    const restoredLogsE = workoutRepository.getLogs();
+    const restoredExercisesE = workoutRepository.getExercises();
+
+    const logEOk = restoredLogsE[0]?.exercises[0]?.exerciseId === 'band-pull-up';
+    const canonicalAdded = restoredExercisesE.some(e => e.id === 'band-pull-up');
+    const benchPreserved = restoredExercisesE.some(e => e.id === 'bench-press');
+
+    if (logEOk && canonicalAdded && benchPreserved) {
+      recordResult('✅ [CU2 Scenario E] Dangling reference 방지 및 canonical 자동 매핑', true, 'Exercise 목록에 없던 legacy duplicate 참조가 dangling 없이 canonical 정의와 함께 안전 수렴');
+    } else {
+      recordResult('✅ [CU2 Scenario E] Dangling reference 방지 및 canonical 자동 매핑', false, `수렴 실패 (logEOk: ${logEOk}, canonicalAdded: ${canonicalAdded}, benchPreserved: ${benchPreserved})`);
+    }
+  } catch (err: any) {
+    recordResult('✅ [CU2 Scenario E] Dangling reference 방지 및 canonical 자동 매핑', false, err.message);
+  }
+
+  // 39. ✅ [CU2 Scenario F] Exercise 목록에 duplicate 있으나 Workout/Routine 참조 0 -> duplicate 안전 삭제
+  try {
+    const snapF = snapshotService.createSnapshot(
+      [],
+      [],
+      [],
+      [
+        { id: 'bench-press', name: 'Bench Press', category: 'Chest' },
+        { id: 'band-pull-up-simple', name: '밴드 풀업', category: 'Back', logType: 'BODYWEIGHT_REPS', equipment: 'BAND' },
+        { id: 'kneeling-cable-fly', name: '닐링 케이블 플라이', category: 'Chest', logType: 'STANDARD', equipment: 'CABLE' }
+      ]
+    );
+
+    snapshotService.restoreSnapshot(snapF);
+    const restoredExercisesF = workoutRepository.getExercises();
+
+    const benchPreserved = restoredExercisesF.some(e => e.id === 'bench-press');
+    const bandDupRemoved = !restoredExercisesF.some(e => e.id === 'band-pull-up-simple');
+    const flyDupRemoved = !restoredExercisesF.some(e => e.id === 'kneeling-cable-fly');
+
+    if (benchPreserved && bandDupRemoved && flyDupRemoved) {
+      recordResult('✅ [CU2 Scenario F] 미참조 duplicate Exercise 안전 삭제', true, '참조가 0인 duplicate exercise들이 안전하게 제거되고 기존 정상 운동 유지됨');
+    } else {
+      recordResult('✅ [CU2 Scenario F] 미참조 duplicate Exercise 안전 삭제', false, `삭제 실패 (bench: ${benchPreserved}, bandDupRemoved: ${bandDupRemoved}, flyDupRemoved: ${flyDupRemoved})`);
+    }
+  } catch (err: any) {
+    recordResult('✅ [CU2 Scenario F] 미참조 duplicate Exercise 안전 삭제', false, err.message);
+  }
+
   const passedCount = results.filter(r => r.passed).length;
   return {
     total: results.length,
@@ -1058,4 +1327,13 @@ export function runSnapshotSystemTests(): TestSuiteSummary {
     failed: results.length - passedCount,
     results
   };
+}
+
+if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('snapshotSystem.test.ts')) {
+  const summary = runSnapshotSystemTests();
+  console.log(`--- Snapshot System Tests: ${summary.passed}/${summary.total} PASSED ---`);
+  if (summary.failed > 0) {
+    summary.results.filter(r => !r.passed).forEach(r => console.error(`❌ FAILED: ${r.scenario}: ${r.message}`));
+    process.exit(1);
+  }
 }

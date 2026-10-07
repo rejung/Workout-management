@@ -30,6 +30,7 @@ import { motion, AnimatePresence } from 'motion/react';
 
 import { weightRepository } from '../storage/weightRepository';
 import { generateUUID } from '../utils/workoutEngine';
+import { getWeightStep } from '../domain/weightStepPolicy';
 
 interface QuickInputViewProps {
   exercises: Exercise[];
@@ -701,6 +702,8 @@ export default function QuickInputView({
                 {activeSessions.map((as) => {
                   const prevData = getPreviousSessionData(as.exerciseId);
                   const logType = getExerciseLogType(as.exerciseId, as.exerciseName);
+                  const currentExercise = exercises.find(e => e.id === as.exerciseId || (as.exerciseName && e.name === as.exerciseName));
+                  const weightStep = getWeightStep(currentExercise || as);
                   return (
                     <div key={as.exerciseId} className="bg-white border border-zinc-200 rounded-2xl overflow-hidden shadow-sm">
                       {/* Exercise Name header */}
@@ -1052,7 +1055,7 @@ export default function QuickInputView({
                                       {/* Weight Control */}
                                       <div className="col-span-4 flex items-center justify-between bg-white border border-zinc-200 rounded-lg p-1">
                                         <button
-                                          onClick={() => handleUpdateSet(as.exerciseId, set.id, 'weight', Math.max(0, set.weight - 2.5))}
+                                          onClick={() => handleUpdateSet(as.exerciseId, set.id, 'weight', Math.max(0, Number((set.weight - weightStep).toFixed(2))))}
                                           className="p-1 hover:bg-zinc-100 text-zinc-500 rounded cursor-pointer"
                                         >
                                           <Minus className="w-3 h-3" />
@@ -1062,7 +1065,7 @@ export default function QuickInputView({
                                           <span className="text-[9px] text-zinc-400 font-bold ml-0.5">kg</span>
                                         </div>
                                         <button
-                                          onClick={() => handleUpdateSet(as.exerciseId, set.id, 'weight', set.weight + 2.5)}
+                                          onClick={() => handleUpdateSet(as.exerciseId, set.id, 'weight', Number((set.weight + weightStep).toFixed(2)))}
                                           className="p-1 hover:bg-zinc-100 text-zinc-500 rounded cursor-pointer"
                                         >
                                           <Plus className="w-3 h-3" />

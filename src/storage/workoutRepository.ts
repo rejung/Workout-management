@@ -8,10 +8,31 @@ import { storage } from './storage';
 import { DEFAULT_EXERCISES, DEFAULT_ROUTINES } from '../constants';
 import { isMockWorkoutLogId } from '../constants/mockData';
 import { applyV1CustomExerciseRemappingPatch } from '../utils/v1Migration';
+import { applyCanonicalExerciseMigration } from '../domain/exerciseCanonicalDomain';
 
 const LOGS_KEY = 'wms_logs';
 const ROUTINES_KEY = 'wms_routines';
 const EXERCISES_KEY = 'wms_exercises';
+
+function getRawStorageItem(key: string): string | null {
+  if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
+    return window.localStorage.getItem(key);
+  }
+  if (typeof localStorage !== 'undefined') {
+    return localStorage.getItem(key);
+  }
+  return null;
+}
+
+function setRawStorageItem(key: string, value: string): void {
+  if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
+    window.localStorage.setItem(key, value);
+    return;
+  }
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(key, value);
+  }
+}
 
 export function isRemovedExerciseName(name: string): boolean {
   if (!name) return false;
@@ -59,7 +80,7 @@ export const workoutRepository = {
 
     // 1. Restore exact dates for v1-migrated logs timezone-safely
     const dateRestoredKeyV6 = 'wms_v1_logs_date_restored_v6';
-    if (localStorage.getItem(dateRestoredKeyV6) !== 'true') {
+    if (getRawStorageItem(dateRestoredKeyV6) !== 'true') {
       const hasShiftedLogs = logs.some(log => 
         log && log.id && typeof log.id === 'string' && log.id.startsWith('v1-log-') && log.date === '2026-06-27'
       );
@@ -98,7 +119,7 @@ export const workoutRepository = {
           return log;
         });
       }
-      localStorage.setItem(dateRestoredKeyV6, 'true');
+      setRawStorageItem(dateRestoredKeyV6, 'true');
     }
 
     // 2. Strict Mock Filtering (Only removes 'mock-' prefixed IDs, preserving user data/migration data/clone data)
@@ -113,14 +134,32 @@ export const workoutRepository = {
       this.saveLogs(logs);
     }
 
-    // 3. Ensure routines are loaded and the 5 custom user routines from the image are restored & preserved
+    // 3. Ensure routines are loaded and preserved
     const routinesRestoredKeyV8 = 'wms_routines_v8_restored';
-    let routines = storage.getItem<Routine[]>(ROUTINES_KEY);
+    const rawRoutines = getRawStorageItem(ROUTINES_KEY);
 
-    if (!routines || !Array.isArray(routines) || localStorage.getItem(routinesRestoredKeyV8) !== 'true') {
+    let routines: Routine[];
+    if (rawRoutines === null) {
+      // Fresh state without existing key -> initialize with DEFAULT_ROUTINES
       routines = DEFAULT_ROUTINES;
       storage.setItem(ROUTINES_KEY, DEFAULT_ROUTINES);
-      localStorage.setItem(routinesRestoredKeyV8, 'true');
+      setRawStorageItem(routinesRestoredKeyV8, 'true');
+    } else {
+      // Existing key -> strictly parse JSON and validate array structure
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(rawRoutines);
+      } catch (err: any) {
+        throw new Error(`Failed to parse routines from storage ("${ROUTINES_KEY}"): ${err.message || err}`);
+      }
+
+      if (!Array.isArray(parsed)) {
+        throw new Error(`Invalid routines data in storage ("${ROUTINES_KEY}"): expected JSON array, received ${typeof parsed}`);
+      }
+
+      // Valid array (including [] and custom routines): preserve as-is
+      routines = parsed as Routine[];
+      setRawStorageItem(routinesRestoredKeyV8, 'true');
     }
 
     // 4. Ensure all default exercises (including the custom ones added for the restored routines) are present and fully normalized in localStorage
@@ -164,14 +203,26 @@ export const workoutRepository = {
         exercisesChanged = true;
       }
 
+      let equipment = ex.equipment;
+      if (def && def.equipment && !equipment) {
+        equipment = def.equipment;
+        exercisesChanged = true;
+      }
+
       const updatedEx = {
         ...ex,
         category,
         logType,
-        canonicalName
+        canonicalName,
+        equipment,
       };
 
-      if (updatedEx.category !== ex.category || updatedEx.logType !== ex.logType || updatedEx.canonicalName !== ex.canonicalName) {
+      if (
+        updatedEx.category !== ex.category ||
+        updatedEx.logType !== ex.logType ||
+        updatedEx.canonicalName !== ex.canonicalName ||
+        updatedEx.equipment !== ex.equipment
+      ) {
         exercisesChanged = true;
       }
 
@@ -194,7 +245,7 @@ export const workoutRepository = {
 
     // 5. One-time Legacy Custom Exercise Remapping Patch
     const v1RemappingPatchKey = 'wms_v1_custom_remapping_patch_applied_v1';
-    if (localStorage.getItem(v1RemappingPatchKey) !== 'true') {
+    if (getRawStorageItem(v1RemappingPatchKey) !== 'true') {
       const currentLogs = this.getLogs();
       const currentRoutines = this.getRoutines();
       const currentExercises = storage.getItem<Exercise[]>(EXERCISES_KEY) || [];
@@ -212,7 +263,28 @@ export const workoutRepository = {
         this.saveExercises(patchResult.updatedExercises);
       }
 
-      localStorage.setItem(v1RemappingPatchKey, 'true');
+      setRawStorageItem(v1RemappingPatchKey, 'true');
+    }
+
+    // 6. Canonical Exercise Merge Patch (Change Unit 1 - Groups 1 to 5)
+    const canonicalMergePatchKey = 'wms_canonical_merge_cu1_applied_v1';
+    if (getRawStorageItem(canonicalMergePatchKey) !== 'true') {
+      const currentLogs = this.getLogs();
+      const currentRoutines = this.getRoutines();
+      const currentExercises = storage.getItem<Exercise[]>(EXERCISES_KEY) || [];
+
+      const migrationResult = applyCanonicalExerciseMigration(
+        currentLogs,
+        currentRoutines,
+        currentExercises,
+        DEFAULT_EXERCISES
+      );
+
+      this.saveLogs(migrationResult.updatedLogs);
+      this.saveRoutines(migrationResult.updatedRoutines);
+      this.saveExercises(migrationResult.updatedExercises);
+
+      setRawStorageItem(canonicalMergePatchKey, 'true');
     }
   },
 
@@ -264,15 +336,24 @@ export const workoutRepository = {
   },
 
   /**
-   * Fetches all division routine templates. If empty, seeds with default routines.
+   * Fetches all division routine templates. If key does not exist, returns default routines.
    * Pure reader with no side-effects or inline database updates.
    */
   getRoutines(): Routine[] {
-    const routines = storage.getItem<Routine[]>(ROUTINES_KEY);
-    if (routines && Array.isArray(routines)) {
-      return routines;
+    const rawRoutines = getRawStorageItem(ROUTINES_KEY);
+    if (rawRoutines === null) {
+      return DEFAULT_ROUTINES;
     }
-    return DEFAULT_ROUTINES;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rawRoutines);
+    } catch (err: any) {
+      throw new Error(`Failed to parse routines from storage ("${ROUTINES_KEY}"): ${err.message || err}`);
+    }
+    if (!Array.isArray(parsed)) {
+      throw new Error(`Invalid routines data in storage ("${ROUTINES_KEY}"): expected JSON array, received ${typeof parsed}`);
+    }
+    return parsed as Routine[];
   },
 
   /**

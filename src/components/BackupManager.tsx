@@ -10,8 +10,7 @@ import { Download, Upload, Trash2, ShieldAlert, CheckCircle2, HelpCircle, FileSp
 import { parseV1Excel, MigrationPreview } from '../utils/v1Migration';
 import { formatWorkoutDateShort, getLocalDateString } from '../utils/dateUtils';
 import { goalRepository } from '../storage/goalRepository';
-import { snapshotService, RestoreSummary } from '../services/snapshotService';
-import { runSnapshotSystemTests, TestSuiteSummary } from '../utils/snapshotSystem.test';
+import { snapshotService, RestoreSummary, SnapshotValidationResult } from '../services/snapshotService';
 import { User } from 'firebase/auth';
 import {
   initAuth,
@@ -29,7 +28,6 @@ import {
   DriveAuthState,
   DriveApiError
 } from '../services/googleDriveService';
-import { runGoogleDriveReliabilitySuite, DriveTestSuiteSummary } from '../services/googleDriveAuth.test';
 
 interface BackupManagerProps {
   logs: WorkoutLog[];
@@ -93,7 +91,7 @@ export default function BackupManager({
   const [visibleCandidates, setVisibleCandidates] = useState<Record<string, boolean>>({});
   const [visibleTraces, setVisibleTraces] = useState<Record<string, boolean>>({});
   const [restoreResult, setRestoreResult] = useState<RestoreSummary | null>(null);
-  const [testSuiteSummary, setTestSuiteSummary] = useState<TestSuiteSummary | null>(null);
+  const [diagnosticResult, setDiagnosticResult] = useState<SnapshotValidationResult | null>(null);
   const [isTesting, setIsTesting] = useState<boolean>(false);
 
   // Google Drive Cloud Backup states
@@ -104,7 +102,6 @@ export default function BackupManager({
   const [isGDriveLoading, setIsGDriveLoading] = useState<boolean>(false);
   const [driveBackups, setDriveBackups] = useState<GoogleDriveFile[]>([]);
   const [driveError, setDriveError] = useState<string | null>(null);
-  const [driveSuiteSummary, setDriveSuiteSummary] = useState<DriveTestSuiteSummary | null>(null);
 
   useEffect(() => {
     setIsGAuthLoading(true);
@@ -391,20 +388,17 @@ export default function BackupManager({
     }, 4000);
   };
 
-  const handleRunDiagnostics = async () => {
+  const handleRunDiagnostics = () => {
     setIsTesting(true);
     try {
-      const snapSummary = runSnapshotSystemTests();
-      setTestSuiteSummary(snapSummary);
-
-      const driveSummary = await runGoogleDriveReliabilitySuite();
-      setDriveSuiteSummary(driveSummary);
-
+      const snapshot = snapshotService.createSnapshot(logs, weightLogs || [], routines, exercises);
+      const validation = snapshotService.validateSnapshot(snapshot);
+      setDiagnosticResult(validation);
       setIsTesting(false);
-      showFeedback(`시스템 무결성 & Google Drive 안정성 진단 완료 (스냅샷: ${snapSummary.passed}/${snapSummary.total}, 드라이브: ${driveSummary.passed}/${driveSummary.total})`);
+      showFeedback(`스냅샷 무결성 진단 완료 (건강도: ${validation.healthScore}점, 상태: ${validation.isValid ? '정상' : '오류'})`);
     } catch (e: any) {
       setIsTesting(false);
-      showAlert(`진단 실패: ${e.message}`, '테스트 오류');
+      showAlert(`진단 실패: ${e.message}`, '시스템 진단 오류');
     }
   };
 
@@ -2007,7 +2001,7 @@ export default function BackupManager({
                 <span>시스템 진단</span>
               </h3>
               <p className="text-slate-400 text-xs mt-0.5">
-                가져온 데이터의 무결성과 Google Drive 클라우드 인증 신뢰성을 검증하고 진단합니다.
+                현재 저장된 데이터의 무결성과 스냅샷 상태를 읽기 전용으로 검증하고 진단합니다.
               </p>
             </div>
             <button
@@ -2024,77 +2018,87 @@ export default function BackupManager({
             </button>
           </div>
 
-          {/* Snapshot System Test Results */}
-          {testSuiteSummary && (
-            <div className="bg-zinc-950 p-5 rounded-xl border border-zinc-800 space-y-3 animate-fade-in font-mono text-xs">
-              <div className="flex items-center justify-between pb-2 border-b border-zinc-900">
+          {/* Snapshot Integrity Diagnostic Results */}
+          {diagnosticResult && (
+            <div className="bg-zinc-950 p-5 rounded-xl border border-zinc-800 space-y-4 animate-fade-in font-mono text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-zinc-900">
                 <span className="text-zinc-300 font-sans font-bold flex items-center gap-2">
-                  <span className="text-emerald-400 font-bold">●</span> 스냅샷 시스템 진단 (Snapshot Integrity Tests)
+                  <span className={diagnosticResult.isValid ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>●</span>
+                  <span>스냅샷 데이터 무결성 진단 (Snapshot Integrity Diagnostic)</span>
                 </span>
-                <span className="text-emerald-400 font-bold px-2.5 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-800/60">
-                  총 {testSuiteSummary.total}개 항목 중 {testSuiteSummary.passed}개 통과 ({Math.round((testSuiteSummary.passed / testSuiteSummary.total) * 100)}%)
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`font-bold px-2.5 py-0.5 rounded-full font-sans text-xs ${
+                    diagnosticResult.isValid 
+                      ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60' 
+                      : 'bg-rose-950/80 text-rose-400 border border-rose-800/60'
+                  }`}>
+                    {diagnosticResult.isValid ? '무결성 검증 통과 (PASS)' : '검증 실패 (FAIL)'}
+                  </span>
+                  <span className={`font-bold px-2.5 py-0.5 rounded-full text-xs ${
+                    diagnosticResult.healthScore === 100 
+                      ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60' 
+                      : diagnosticResult.healthScore >= 80 
+                        ? 'bg-amber-950/80 text-amber-400 border border-amber-800/60' 
+                        : 'bg-rose-950/80 text-rose-400 border border-rose-800/60'
+                  }`}>
+                    건강도: {diagnosticResult.healthScore}점 / 100점
+                  </span>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-1 font-sans">
-                {testSuiteSummary.results.map((res, idx) => (
-                  <div
-                    key={idx}
-                    className={`p-3 rounded-lg border flex flex-col gap-1 ${
-                      res.passed
-                        ? 'bg-zinc-900/50 border-emerald-900/50 text-zinc-200'
-                        : 'bg-rose-950/40 border-rose-900 text-rose-200 font-bold'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between text-xs font-bold">
-                      <span>{res.scenario}</span>
-                      <span className={res.passed ? 'text-emerald-400 font-mono' : 'text-rose-400 font-mono'}>
-                        {res.passed ? 'PASS' : 'FAIL'}
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-zinc-400 font-mono leading-tight truncate" title={res.message}>
-                      {res.message}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Google Drive Auth Reliability Suite Results */}
-          {driveSuiteSummary && (
-            <div className="bg-zinc-950 p-5 rounded-xl border border-zinc-800 space-y-3 animate-fade-in font-mono text-xs">
-              <div className="flex items-center justify-between pb-2 border-b border-zinc-900">
-                <span className="text-zinc-300 font-sans font-bold flex items-center gap-2">
-                  <span className="text-indigo-400 font-bold">☁</span> 구글 드라이브 인증 신뢰성 진단 (Google Drive Auth Reliability G1–G12)
-                </span>
-                <span className="text-emerald-400 font-bold px-2.5 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-800/60">
-                  총 {driveSuiteSummary.total}개 항목 중 {driveSuiteSummary.passed}개 통과 ({Math.round((driveSuiteSummary.passed / driveSuiteSummary.total) * 100)}%)
-                </span>
+              {/* Statistics Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-sans">
+                <div className="bg-zinc-900/60 p-3 rounded-lg border border-zinc-850">
+                  <span className="text-zinc-500 text-[11px] block mb-1">운동 기록</span>
+                  <span className="text-sm font-black font-mono text-white">{diagnosticResult.statistics.workoutCount}개</span>
+                </div>
+                <div className="bg-zinc-900/60 p-3 rounded-lg border border-zinc-850">
+                  <span className="text-zinc-500 text-[11px] block mb-1">운동 종목 수</span>
+                  <span className="text-sm font-black font-mono text-white">{diagnosticResult.statistics.exerciseCount}개</span>
+                </div>
+                <div className="bg-zinc-900/60 p-3 rounded-lg border border-zinc-850">
+                  <span className="text-zinc-500 text-[11px] block mb-1">총 세트 수</span>
+                  <span className="text-sm font-black font-mono text-white">{diagnosticResult.statistics.setCount}개</span>
+                </div>
+                <div className="bg-zinc-900/60 p-3 rounded-lg border border-zinc-850">
+                  <span className="text-zinc-500 text-[11px] block mb-1">체중 기록</span>
+                  <span className="text-sm font-black font-mono text-white">{diagnosticResult.statistics.weightCount}개</span>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-1 font-sans">
-                {driveSuiteSummary.results.map((res, idx) => (
-                  <div
-                    key={idx}
-                    className={`p-3 rounded-lg border flex flex-col gap-1 ${
-                      res.passed
-                        ? 'bg-zinc-900/50 border-indigo-900/50 text-zinc-200'
-                        : 'bg-rose-950/40 border-rose-900 text-rose-200 font-bold'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between text-xs font-bold">
-                      <span>{res.scenario}</span>
-                      <span className={res.passed ? 'text-emerald-400 font-mono' : 'text-rose-400 font-mono'}>
-                        {res.passed ? 'PASS' : 'FAIL'}
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-zinc-400 font-mono leading-tight truncate" title={res.message}>
-                      {res.message}
-                    </div>
-                  </div>
-                ))}
+              {/* Health Reasons / Validation Criteria */}
+              <div className="space-y-2 pt-1">
+                <div className="text-xs font-bold text-zinc-300 font-sans">검증 세부 항목</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 font-sans">
+                  {diagnosticResult.healthReasons.map((reason, idx) => {
+                    const isPassed = reason.includes('✓') || reason.includes('성공') || reason.includes('정상') || reason.includes('최신') || reason.includes('없음');
+                    return (
+                      <div
+                        key={idx}
+                        className={`p-3 rounded-lg border flex flex-col gap-1 ${
+                          isPassed
+                            ? 'bg-zinc-900/50 border-emerald-900/50 text-zinc-200'
+                            : 'bg-rose-950/40 border-rose-900 text-rose-200 font-bold'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-xs font-bold">
+                          <span>{reason.replace(/^✓\s*/, '')}</span>
+                          <span className={isPassed ? 'text-emerald-400 font-mono' : 'text-rose-400 font-mono'}>
+                            {isPassed ? 'PASS' : 'FAIL'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
+
+              {diagnosticResult.error && (
+                <div className="bg-rose-950/40 border border-rose-900/60 rounded-xl p-3 text-xs text-rose-300 font-sans">
+                  <p className="font-bold mb-1">⚠️ 무결성 검증 오류 상세:</p>
+                  <p>{diagnosticResult.error}</p>
+                </div>
+              )}
             </div>
           )}
         </div>

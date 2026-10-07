@@ -58,6 +58,33 @@ export const KNOWN_EQUIVALENTS: Record<string, string> = {
   '풀업': 'pull-up',
   '플랭크': 'plank',
   '스쿼트': 'squat',
+
+  // Canonical Merge Groups (Group 1 - 5)
+  '밴드풀업': 'band-pull-up',
+  '밴드 풀업': 'band-pull-up',
+  '밴드턱걸이': 'band-pull-up',
+  '시티드케이블로우': 'seated-row',
+  '시티드 케이블 로우': 'seated-row',
+  '케이블로우': 'seated-row',
+  '케이블 로우': 'seated-row',
+  '케이블플라이': 'cable-fly',
+  '케이블 플라이': 'cable-fly',
+  '닐링케이블플라이': 'cable-fly',
+  '닐링 케이블 플라이': 'cable-fly',
+  '트라이셉스푸쉬다운': 'triceps-pushdown',
+  '트라이셉스 푸쉬다운': 'triceps-pushdown',
+  '케이블푸시다운': 'triceps-pushdown',
+  '케이블 푸시다운': 'triceps-pushdown',
+  '케이블푸쉬다운': 'triceps-pushdown',
+  '케이블 푸쉬다운': 'triceps-pushdown',
+  '푸시다운': 'triceps-pushdown',
+  '푸쉬다운': 'triceps-pushdown',
+  '덤벨로우': 'dumbbell-row',
+  '덤벨 로우': 'dumbbell-row',
+  '원암덤벨로우': 'dumbbell-row',
+  '원암 덤벨 로우': 'dumbbell-row',
+  '원암로우': 'dumbbell-row',
+  '원암 로우': 'dumbbell-row',
 };
 
 export const normalizeName = (n: string): string => {

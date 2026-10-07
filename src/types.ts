@@ -17,6 +17,10 @@ export interface Exercise {
   isCustom?: boolean;
   notes?: string;
   canonicalName?: string;
+  /** Primary Single Source of Truth for exercise equipment (e.g. 'DUMBBELL', 'BARBELL', 'CABLE', 'MACHINE', etc.) */
+  equipment?: string;
+  /** Optional secondary equipment type for external or legacy compatibility */
+  equipmentType?: string;
 }
 
 export interface SetRecord {
