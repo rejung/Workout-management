@@ -55,7 +55,7 @@ export const storage = {
       return store.getItem(key);
     } catch (error) {
       console.error(`Error reading raw key "${key}" from storage:`, error);
-      return null;
+      throw error;
     }
   },
 
