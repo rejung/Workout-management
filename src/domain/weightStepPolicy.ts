@@ -113,6 +113,94 @@ export function getWeightStep(
     : DEFAULT_WEIGHT_STEP;
 }
 
+/**
+ * Normalized keyword matcher for Cable exercises.
+ */
+function checkCableNameOrKeyword(input: string): boolean {
+  const norm = input.toLowerCase().replace(/\s+/g, '');
+
+  if (norm.includes('케이블') || norm.includes('cable')) {
+    return true;
+  }
+
+  // Canonical movements that are inherently cable exercises
+  if (
+    norm.includes('랫풀다운') ||
+    norm.includes('latpulldown') ||
+    norm.includes('페이스풀') ||
+    norm.includes('facepull') ||
+    norm.includes('푸쉬다운') ||
+    norm.includes('푸시다운') ||
+    norm.includes('pushdown')
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Determines whether an exercise is a cable exercise.
+ *
+ * Priority 1: Structured equipment metadata (equipment / equipmentType)
+ * Priority 2: Canonical exercise metadata & known cable identifiers
+ * Priority 3: Keyword heuristic fallback on normalized name / canonicalName / id
+ */
+export function isCableExercise(
+  exercise?: ExerciseLike | string | null,
+  fallbackName?: string
+): boolean {
+  if (!exercise && !fallbackName) {
+    return false;
+  }
+
+  if (typeof exercise === 'string') {
+    return checkCableNameOrKeyword(exercise);
+  }
+
+  // Priority 1: Structured equipment metadata
+  const rawEquipment = (exercise.equipment ?? exercise.equipmentType) as unknown;
+  if (typeof rawEquipment === 'string' && rawEquipment.trim().length > 0) {
+    const eq = rawEquipment.trim().toLowerCase();
+    if (eq === 'cable' || eq === '케이블') {
+      return true;
+    }
+    // Any explicit non-cable equipment metadata explicitly overrides name heuristics
+    return false;
+  }
+
+  // Priority 2 & 3: ID, canonicalName, name
+  const id = exercise.id || exercise.exerciseId || '';
+  const canonicalName = exercise.canonicalName || '';
+  const name = exercise.name || exercise.exerciseName || fallbackName || '';
+
+  if (id) {
+    const lowerId = id.toLowerCase();
+    if (
+      lowerId.includes('cable') ||
+      lowerId.includes('케이블') ||
+      lowerId === 'lat-pulldown' ||
+      lowerId === 'seated-row' ||
+      lowerId === 'face-pull' ||
+      lowerId === 'triceps-pushdown' ||
+      lowerId === 'face-pull-rule' ||
+      lowerId === 'pushdown'
+    ) {
+      return true;
+    }
+  }
+
+  if (canonicalName && checkCableNameOrKeyword(canonicalName)) {
+    return true;
+  }
+
+  if (name && checkCableNameOrKeyword(name)) {
+    return true;
+  }
+
+  return false;
+}
+
 export type WeightStepResolutionTier =
   | 'EQUIPMENT_METADATA'
   | 'CANONICAL_ID'

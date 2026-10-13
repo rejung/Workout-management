@@ -11,7 +11,7 @@ import { formatSetRecordsList } from '../utils/formatter';
 import { getSortedExercises } from '../utils/sorting';
 import { motion } from 'motion/react';
 import { generateUUID } from '../utils/workoutEngine';
-import { getWeightStep } from '../domain/weightStepPolicy';
+import { getWeightStep, isCableExercise } from '../domain/weightStepPolicy';
 
 interface WorkoutFormProps {
   exercises: Exercise[];
@@ -207,7 +207,7 @@ export default function WorkoutForm({
         const lastSet = ae.sets[ae.sets.length - 1];
         const newSet: SetRecord = {
           id: generateUUID(),
-          weight: lastSet ? lastSet.weight : 0,
+          weight: lastSet ? (lastSet.weight !== '' && !isNaN(Number(lastSet.weight)) ? Number(lastSet.weight) : 0) : 0,
           reps: lastSet ? lastSet.reps : (exLogType === 'TIME_BASED' ? 0 : 10),
           isWarmup: false,
           timeSeconds: lastSet ? lastSet.timeSeconds : (exLogType === 'TIME_BASED' ? 60 : undefined),
@@ -261,7 +261,40 @@ export default function WorkoutForm({
       return;
     }
 
-    // Validate that sets have positive weights/reps (warn if 0, but allow bodyweight)
+    // Validate that sets have valid weights/reps (warn if empty, negative, NaN or Infinity)
+    for (const ae of activeExercises) {
+      const dbEx = exercises.find(e => e.id === ae.exerciseId || e.name === ae.exerciseName);
+      const logType = dbEx?.logType || 'STANDARD';
+
+      if (logType === 'STANDARD') {
+        for (let setIdx = 0; setIdx < ae.sets.length; setIdx++) {
+          const set = ae.sets[setIdx];
+          const rawWeight = set.weight as unknown;
+
+          if (rawWeight === '' || rawWeight === null || rawWeight === undefined) {
+            showAlert(`${ae.exerciseName} ${setIdx + 1}세트의 중량을 입력해 주세요.`, '일지 저장 오류');
+            return;
+          }
+
+          const numWeight = Number(rawWeight);
+          if (isNaN(numWeight) || !isFinite(numWeight) || numWeight < 0) {
+            showAlert(`${ae.exerciseName} ${setIdx + 1}세트에 유효하지 않은 중량이 입력되었습니다.`, '일지 저장 오류');
+            return;
+          }
+        }
+      }
+    }
+
+    const sanitizedExercises: ExerciseSession[] = activeExercises.map(ae => ({
+      ...ae,
+      sets: ae.sets.map(s => ({
+        ...s,
+        weight: typeof s.weight === 'string'
+          ? (s.weight.trim() === '' ? 0 : Number(s.weight))
+          : (Number(s.weight) || 0)
+      }))
+    }));
+
     const log: WorkoutLog = {
       id: editingLog ? editingLog.id : generateUUID(),
       date,
@@ -269,7 +302,7 @@ export default function WorkoutForm({
       routineId: selectedRoutineId || undefined,
       routineName: selectedRoutineId ? routines.find(r => r.id === selectedRoutineId)?.name : undefined,
       notes,
-      exercises: activeExercises
+      exercises: sanitizedExercises
     };
 
     onSave(log);
@@ -378,6 +411,7 @@ export default function WorkoutForm({
                 const dbExercise = exercises.find(e => e.id === ae.exerciseId || e.name === ae.exerciseName);
                 const logType = dbExercise?.logType || 'STANDARD';
                 const weightStep = getWeightStep(dbExercise || ae);
+                const isCable = isCableExercise(dbExercise || ae);
 
                 return (
                   <motion.div
@@ -662,9 +696,9 @@ export default function WorkoutForm({
                                 <input
                                   type="number"
                                   min="0"
-                                  step={weightStep}
-                                  value={set.weight || ''}
-                                  onChange={(e) => handleUpdateSet(ae.exerciseId, set.id, 'weight', Number(e.target.value))}
+                                  step={isCable ? 'any' : weightStep}
+                                  value={set.weight !== undefined && set.weight !== null ? set.weight : ''}
+                                  onChange={(e) => handleUpdateSet(ae.exerciseId, set.id, 'weight', e.target.value)}
                                   className="w-full bg-transparent text-sm font-semibold font-mono text-center text-zinc-800 focus:outline-none"
                                 />
                                 <span className="text-[10px] text-zinc-400 font-medium">kg</span>
