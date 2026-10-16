@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useMemo, FormEvent } from 'react';
+import { useState, useMemo, useEffect, FormEvent } from 'react';
 import { Exercise, MuscleCategory, LogType, WorkoutLog, Routine } from '../types';
-import { Plus, Trash2, Dumbbell, Tag, Grid, Filter, AlertCircle, Copy, Check, Calendar, AlertTriangle, ListOrdered, ClipboardList, Info, Sparkles, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Dumbbell, Tag, Grid, Filter, AlertCircle, Copy, Check, Calendar, AlertTriangle, ListOrdered, ClipboardList, Info, Sparkles, RefreshCw, Pencil, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { generateUUID } from '../utils/workoutEngine';
 import { isRemovedExerciseName } from '../storage/workoutRepository';
@@ -125,6 +125,99 @@ export default function ExerciseDatabase({
   const [lastOptimized, setLastOptimized] = useState<string>(() => {
     return localStorage.getItem('last_db_optimized') || '2026-06-28 07:13';
   });
+
+  // State for editing an exercise
+  const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editCategory, setEditCategory] = useState<MuscleCategory>('Chest');
+  const [editEquipment, setEditEquipment] = useState('');
+  const [equipmentMode, setEquipmentMode] = useState<string>('BARBELL');
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const handleStartEdit = (ex: Exercise) => {
+    setEditingExercise(ex);
+    setEditName(ex.name);
+    setEditCategory(ex.category);
+    const eq = ex.equipment || '';
+    setEditEquipment(eq);
+    const isStandard = ['BARBELL', 'DUMBBELL', 'CABLE', 'MACHINE', 'BODYWEIGHT', 'BAND', 'CARDIO', ''].includes(eq);
+    setEquipmentMode(isStandard ? eq : 'CUSTOM');
+    setEditError(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingExercise(null);
+    setEditName('');
+    setEditCategory('Chest');
+    setEditEquipment('');
+    setEquipmentMode('BARBELL');
+    setEditError(null);
+  };
+
+  // Close modal on ESC key
+  useEffect(() => {
+    if (!editingExercise) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleCancelEdit();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [editingExercise]);
+
+  const handleSaveEdit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!editingExercise) return;
+
+    const trimmedName = editName.trim();
+    if (!trimmedName) {
+      setEditError('운동 명칭을 입력해 주세요.');
+      return;
+    }
+
+    if (isRemovedExerciseName(trimmedName)) {
+      setEditError('해당 운동 명칭은 라이브러리 제외 항목에 해당하여 사용할 수 없습니다.');
+      return;
+    }
+
+    // Check duplicate name against other exercises
+    const isDuplicate = exercises.some(
+      ex => ex.id !== editingExercise.id && ex.name.toLowerCase().trim() === trimmedName.toLowerCase()
+    );
+
+    if (isDuplicate) {
+      setEditError('이미 동일한 이름의 다른 운동 종목이 등록되어 있습니다. 자동 병합되지 않으므로 고유한 명칭을 입력해 주세요.');
+      return;
+    }
+
+    try {
+      const finalEquipment = equipmentMode === 'CUSTOM' ? editEquipment.trim() : (equipmentMode || undefined);
+
+      const updated = exercises.map(ex => {
+        if (ex.id === editingExercise.id) {
+          return {
+            ...ex,
+            name: trimmedName,
+            category: editCategory,
+            equipment: finalEquipment || undefined,
+          };
+        }
+        return ex;
+      });
+
+      if (onUpdateExercises) {
+        onUpdateExercises(updated);
+      } else {
+        throw new Error('운동 데이터를 저장할 수 있는 핸들러가 연결되지 않았습니다.');
+      }
+
+      setEditingExercise(null);
+      setEditError(null);
+    } catch (err: any) {
+      setEditError(err.message || '운동 정보 저장에 실패했습니다.');
+    }
+  };
 
   const filteredExercises = useMemo(() => {
     const validExercises = exercises.filter(ex => !isRemovedExerciseName(ex.name) && !isRemovedExerciseName(ex.id));
@@ -754,20 +847,34 @@ export default function ExerciseDatabase({
                   <div className="truncate">
                     <span className="text-xs font-semibold text-zinc-800 block truncate">{ex.name}</span>
                     <span className="text-[9px] text-zinc-400 font-mono uppercase tracking-wider block">
-                      {CATEGORIES_KO[ex.category].split(' ')[0]} • {ex.logType || 'STANDARD'}
+                      {CATEGORIES_KO[ex.category].split(' ')[0]} • {ex.logType || 'STANDARD'}{ex.equipment ? ` • ${ex.equipment}` : ''}
                     </span>
                   </div>
                 </div>
 
-                {!referencedExerciseIds.has(ex.id) && (
+                <div className="flex items-center gap-1 shrink-0 ml-2">
                   <button
-                    onClick={() => onDeleteExercise(ex.id)}
-                    className="p-1 text-zinc-400 hover:text-rose-600 rounded-md hover:bg-rose-50 transition-all cursor-pointer"
-                    title="운동 종목 삭제"
+                    type="button"
+                    onClick={() => handleStartEdit(ex)}
+                    className="p-1.5 text-zinc-400 hover:text-zinc-900 rounded-md hover:bg-zinc-200/60 transition-all cursor-pointer"
+                    title="운동 종목 수정"
+                    aria-label={`${ex.name} 수정`}
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Pencil className="w-3.5 h-3.5" />
                   </button>
-                )}
+
+                  {!referencedExerciseIds.has(ex.id) && (
+                    <button
+                      type="button"
+                      onClick={() => onDeleteExercise(ex.id)}
+                      className="p-1.5 text-zinc-400 hover:text-rose-600 rounded-md hover:bg-rose-50 transition-all cursor-pointer"
+                      title="운동 종목 삭제"
+                      aria-label={`${ex.name} 삭제`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -1042,6 +1149,138 @@ export default function ExerciseDatabase({
           </div>
         )}
       </div>
+
+      {/* --- EDIT EXERCISE MODAL --- */}
+      {editingExercise && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-exercise-title"
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) handleCancelEdit();
+          }}
+        >
+          <div className="bg-white rounded-xl border border-zinc-200 shadow-xl max-w-md w-full p-5 space-y-4">
+            <div className="flex items-start justify-between border-b border-zinc-100 pb-3">
+              <div>
+                <h3 id="edit-exercise-title" className="text-sm font-bold text-zinc-900 flex items-center gap-2">
+                  <Pencil className="w-4 h-4 text-zinc-700" />
+                  운동 종목 수정
+                </h3>
+                <p className="text-[11px] text-zinc-400 font-mono mt-0.5">
+                  ID: {editingExercise.id} · {editingExercise.logType || 'STANDARD'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="p-1 text-zinc-400 hover:text-zinc-700 rounded-md transition-colors cursor-pointer"
+                aria-label="닫기"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {editError && (
+              <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg p-3 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <span className="leading-snug">{editError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEdit} className="space-y-3.5">
+              <div className="space-y-1.5">
+                <label htmlFor="edit-exercise-name" className="text-xs font-semibold text-zinc-700">
+                  운동 명칭 <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  id="edit-exercise-name"
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => {
+                    setEditName(e.target.value);
+                    if (editError) setEditError(null);
+                  }}
+                  className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:bg-white"
+                  placeholder="운동 이름을 입력하세요"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="edit-exercise-category" className="text-xs font-semibold text-zinc-700">
+                  주동근 카테고리
+                </label>
+                <select
+                  id="edit-exercise-category"
+                  value={editCategory}
+                  onChange={(e) => setEditCategory(e.target.value as MuscleCategory)}
+                  className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:bg-white cursor-pointer"
+                >
+                  {Object.entries(CATEGORIES_KO).map(([k, v]) => (
+                    <option key={k} value={k}>{v}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="edit-exercise-equipment" className="text-xs font-semibold text-zinc-700">
+                  사용 기구 (Equipment)
+                </label>
+                <select
+                  id="edit-exercise-equipment"
+                  value={equipmentMode}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setEquipmentMode(val);
+                    if (val !== 'CUSTOM') {
+                      setEditEquipment(val);
+                    }
+                  }}
+                  className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:bg-white cursor-pointer"
+                >
+                  <option value="BARBELL">바벨 (Barbell)</option>
+                  <option value="DUMBBELL">덤벨 (Dumbbell)</option>
+                  <option value="CABLE">케이블 (Cable)</option>
+                  <option value="MACHINE">머신 (Machine)</option>
+                  <option value="BODYWEIGHT">맨몸 (Bodyweight)</option>
+                  <option value="BAND">밴드 (Band)</option>
+                  <option value="CARDIO">유산소 기구 (Cardio)</option>
+                  <option value="">미지정 / 없음</option>
+                  <option value="CUSTOM">직접 입력...</option>
+                </select>
+
+                {equipmentMode === 'CUSTOM' && (
+                  <input
+                    type="text"
+                    value={editEquipment}
+                    onChange={(e) => setEditEquipment(e.target.value)}
+                    placeholder="기구 명칭 입력 (예: KETTLEBELL, SMITH_MACHINE)"
+                    className="w-full mt-1.5 bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:bg-white"
+                  />
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-zinc-100">
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="px-3.5 py-2 text-xs font-semibold text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors cursor-pointer"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-xs font-bold text-white bg-zinc-950 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                >
+                  변경사항 저장
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

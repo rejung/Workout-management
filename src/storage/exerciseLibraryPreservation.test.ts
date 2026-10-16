@@ -220,6 +220,40 @@ export function runExerciseLibraryPreservationTests() {
     assert(r.exercises[0].exerciseId === 'bench-press', 'Test 6: Exercise ID in routine preserved');
   }
 
+  // Test 7: Exercise update preserves unedited fields (id, logType, canonicalName) and updates name, category, equipment
+  {
+    const { store } = createMockStorage();
+    storage.setStoreProvider(() => store);
+
+    workoutRepository.initialize();
+    const originalBench = workoutRepository.getExercises().find(e => e.id === 'bench-press')!;
+    assert(originalBench !== undefined, 'Test 7: original bench-press exists');
+
+    // Update bench-press name, category, and equipment
+    const updatedBench: Exercise = {
+      ...originalBench,
+      name: '  플랫 바벨 벤치프레스  '.trim(),
+      category: 'Shoulders',
+      equipment: 'BARBELL',
+    };
+
+    workoutRepository.updateExercise(updatedBench);
+
+    const reloadedBench = workoutRepository.getExercises().find(e => e.id === 'bench-press')!;
+    assert(reloadedBench.name === '플랫 바벨 벤치프레스', 'Test 7: Name trimmed and updated');
+    assert(reloadedBench.category === 'Shoulders', 'Test 7: Category updated');
+    assert(reloadedBench.equipment === 'BARBELL', 'Test 7: Equipment updated');
+    assert(reloadedBench.id === 'bench-press', 'Test 7: ID preserved');
+    assert(reloadedBench.logType === originalBench.logType, 'Test 7: LogType preserved');
+    assert(reloadedBench.canonicalName === originalBench.canonicalName, 'Test 7: CanonicalName preserved');
+
+    // Re-initialize to verify persistence
+    workoutRepository.initialize();
+    const persistedBench = workoutRepository.getExercises().find(e => e.id === 'bench-press')!;
+    assert(persistedBench.name === '플랫 바벨 벤치프레스', 'Test 7: Persisted across restart');
+    assert(persistedBench.category === 'Shoulders', 'Test 7: Category persisted across restart');
+  }
+
   // Reset store provider to default
   storage.setStoreProvider(null);
   console.log('🎉 All Exercise Library Preservation tests PASSED!');
