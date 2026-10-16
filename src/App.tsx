@@ -196,19 +196,18 @@ export default function App() {
   };
 
   const handleDeleteExercise = (id: string) => {
-    // Check if exercise is used in any log or routine
-    const isUsedInLog = logs.some(log => log.exercises.some(e => e.exerciseId === id));
-    const isUsedInRoutine = routines.some(r => r.exercises.some(e => e.exerciseId === id));
-
-    if (isUsedInLog || isUsedInRoutine) {
-      triggerAlert('이미 생성된 훈련 기록이나 분할 루틴 템플릿에서 해당 운동을 사용하고 있으므로 삭제할 수 없습니다.', '삭제 불가');
-      return;
-    }
-
-    triggerConfirm('이 커스텀 운동 종목을 데이터베이스에서 지우시겠습니까?', () => {
-      const updated = exercises.filter(ex => ex.id !== id);
-      saveExercisesToStorage(updated);
-    }, '운동 종목 삭제');
+    triggerConfirm(
+      '라이브러리에서 제거합니다. 과거 운동 기록과 기존 루틴은 유지됩니다.',
+      () => {
+        try {
+          const updated = exercises.filter(ex => ex.id !== id);
+          saveExercisesToStorage(updated);
+        } catch (err: any) {
+          triggerAlert(err?.message || '운동 종목 삭제에 실패했습니다.', '삭제 실패');
+        }
+      },
+      '운동 종목 삭제'
+    );
   };
 
   // Backup Admin Actions

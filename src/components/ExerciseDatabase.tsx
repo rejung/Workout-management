@@ -225,20 +225,6 @@ export default function ExerciseDatabase({
     return validExercises.filter(ex => ex.category === activeTab);
   }, [exercises, activeTab]);
 
-  const referencedExerciseIds = useMemo(() => {
-    const ids = new Set<string>();
-    logs.forEach(log => {
-      log.exercises.forEach(sess => {
-        ids.add(sess.exerciseId);
-      });
-    });
-    routines.forEach(r => {
-      r.exercises.forEach(e => {
-        ids.add(e.exerciseId);
-      });
-    });
-    return ids;
-  }, [logs, routines]);
 
   // Real-time Database Audit Calculation Engine
   const auditStats = useMemo(() => {
@@ -863,17 +849,15 @@ export default function ExerciseDatabase({
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
 
-                  {!referencedExerciseIds.has(ex.id) && (
-                    <button
-                      type="button"
-                      onClick={() => onDeleteExercise(ex.id)}
-                      className="p-1.5 text-zinc-400 hover:text-rose-600 rounded-md hover:bg-rose-50 transition-all cursor-pointer"
-                      title="운동 종목 삭제"
-                      aria-label={`${ex.name} 삭제`}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => onDeleteExercise(ex.id)}
+                    className="p-1.5 text-zinc-400 hover:text-rose-600 rounded-md hover:bg-rose-50 transition-all cursor-pointer"
+                    title="운동 종목 삭제"
+                    aria-label={`${ex.name} 삭제`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             ))}

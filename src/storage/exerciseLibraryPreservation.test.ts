@@ -313,6 +313,73 @@ export function runExerciseLibraryPreservationTests() {
     assert(preservedSquat.equipment === '', 'Test 8: Coexisting explicit empty string equipment remains ""');
   }
 
+  // Test 9: Deleting an exercise with active references in logs and routines removes ONLY from dictionary
+  {
+    const { store } = createMockStorage();
+    storage.setStoreProvider(() => store);
+
+    workoutRepository.initialize();
+
+    const sampleLog: WorkoutLog = {
+      id: 'log-with-deleted-ex',
+      date: '2026-06-01',
+      notes: '과거 운동 일지',
+      exercises: [
+        {
+          exerciseId: 'deadlift',
+          exerciseName: '데드리프트',
+          category: 'Back',
+          sets: [{ id: 's-dl-1', weight: 140, reps: 5 }]
+        }
+      ]
+    };
+
+    const sampleRoutine: Routine = {
+      id: 'routine-with-deleted-ex',
+      name: '등 훈련 루틴',
+      description: '루틴 설명',
+      exercises: [
+        {
+          exerciseId: 'deadlift',
+          exerciseName: '데드리프트',
+          category: 'Back',
+          targetSetsCount: 4
+        }
+      ]
+    };
+
+    workoutRepository.saveLogs([sampleLog]);
+    workoutRepository.saveRoutines([sampleRoutine]);
+
+    // Verify deadlift is in exercises initially
+    const beforeEx = workoutRepository.getExercises();
+    assert(beforeEx.some(e => e.id === 'deadlift'), 'Test 9: deadlift initially in library');
+
+    // Delete deadlift (even though referenced in log and routine)
+    workoutRepository.deleteExercise('deadlift');
+
+    const afterEx = workoutRepository.getExercises();
+    assert(!afterEx.some(e => e.id === 'deadlift'), 'Test 9: deadlift removed from exercise library');
+
+    // Verify logs and routines are completely intact
+    const logs = workoutRepository.getLogs();
+    assert(logs.length === 1, 'Test 9: Past logs count preserved');
+    assert(logs[0].exercises[0].exerciseId === 'deadlift', 'Test 9: Historical log exerciseId preserved');
+    assert(logs[0].exercises[0].sets[0].weight === 140, 'Test 9: Historical set weight preserved');
+
+    const routines = workoutRepository.getRoutines();
+    assert(routines.length === 1, 'Test 9: Routine count preserved');
+    assert(routines[0].exercises[0].exerciseId === 'deadlift', 'Test 9: Routine exerciseId preserved');
+    assert(routines[0].exercises[0].targetSetsCount === 4, 'Test 9: Routine targetSetsCount preserved');
+
+    // Simulate app restart / reload
+    workoutRepository.initialize();
+    workoutRepository.initialize();
+
+    const restartEx = workoutRepository.getExercises();
+    assert(!restartEx.some(e => e.id === 'deadlift'), 'Test 9: deadlift remains deleted after restart');
+  }
+
   // Reset store provider to default
   storage.setStoreProvider(null);
   console.log('🎉 All Exercise Library Preservation tests PASSED!');
