@@ -254,6 +254,65 @@ export function runExerciseLibraryPreservationTests() {
     assert(persistedBench.category === 'Shoulders', 'Test 7: Category persisted across restart');
   }
 
+  // Test 8: Explicit 'no equipment' (equipment: '') is preserved across restart, while legacy undefined gets default fallback
+  {
+    const { store } = createMockStorage();
+    storage.setStoreProvider(() => store);
+
+    workoutRepository.initialize();
+
+    // 1. User sets bench-press to 'no equipment' (empty string)
+    const bench = workoutRepository.getExercises().find(e => e.id === 'bench-press')!;
+    workoutRepository.updateExercise({
+      ...bench,
+      equipment: '', // Explicit 'no equipment'
+    });
+
+    const benchBefore = workoutRepository.getExercises().find(e => e.id === 'bench-press')!;
+    assert(benchBefore.equipment === '', 'Test 8: Explicitly set equipment to empty string');
+
+    // Re-initialize (simulate restart)
+    workoutRepository.initialize();
+    workoutRepository.initialize();
+
+    const benchAfter = workoutRepository.getExercises().find(e => e.id === 'bench-press')!;
+    assert(benchAfter.equipment === '', 'Test 8: equipment: "" is preserved across restart and NOT overwritten with default BARBELL');
+
+    // 2. User sets squat to custom equipment
+    const squat = workoutRepository.getExercises().find(e => e.id === 'squat')!;
+    workoutRepository.updateExercise({
+      ...squat,
+      equipment: 'SMITH_MACHINE',
+    });
+    workoutRepository.initialize();
+    const squatAfter = workoutRepository.getExercises().find(e => e.id === 'squat')!;
+    assert(squatAfter.equipment === 'SMITH_MACHINE', 'Test 8: Custom equipment SMITH_MACHINE preserved across restart');
+
+    // 3. User sets deadlift to CABLE
+    const deadlift = workoutRepository.getExercises().find(e => e.id === 'deadlift')!;
+    workoutRepository.updateExercise({
+      ...deadlift,
+      equipment: 'CABLE',
+    });
+    workoutRepository.initialize();
+    const deadliftAfter = workoutRepository.getExercises().find(e => e.id === 'deadlift')!;
+    assert(deadliftAfter.equipment === 'CABLE', 'Test 8: CABLE equipment preserved across restart');
+
+    // 4. Legacy exercise with missing equipment property (undefined) gets default fallback
+    const legacyExList: Exercise[] = [
+      { id: 'bench-press', name: '벤치프레스', category: 'Chest', logType: 'STANDARD' }, // equipment is undefined
+      { id: 'squat', name: '스쿼트', category: 'Legs', logType: 'STANDARD', equipment: '' }, // equipment is explicit ''
+    ];
+    workoutRepository.saveExercises(legacyExList);
+    workoutRepository.initialize();
+
+    const legacyBench = workoutRepository.getExercises().find(e => e.id === 'bench-press')!;
+    assert(legacyBench.equipment === 'BARBELL', 'Test 8: Legacy undefined equipment gets defaulted to BARBELL');
+
+    const preservedSquat = workoutRepository.getExercises().find(e => e.id === 'squat')!;
+    assert(preservedSquat.equipment === '', 'Test 8: Coexisting explicit empty string equipment remains ""');
+  }
+
   // Reset store provider to default
   storage.setStoreProvider(null);
   console.log('🎉 All Exercise Library Preservation tests PASSED!');

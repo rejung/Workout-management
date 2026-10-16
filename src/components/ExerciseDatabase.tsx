@@ -138,7 +138,7 @@ export default function ExerciseDatabase({
     setEditingExercise(ex);
     setEditName(ex.name);
     setEditCategory(ex.category);
-    const eq = ex.equipment || '';
+    const eq = ex.equipment ?? '';
     setEditEquipment(eq);
     const isStandard = ['BARBELL', 'DUMBBELL', 'CABLE', 'MACHINE', 'BODYWEIGHT', 'BAND', 'CARDIO', ''].includes(eq);
     setEquipmentMode(isStandard ? eq : 'CUSTOM');
@@ -192,7 +192,7 @@ export default function ExerciseDatabase({
     }
 
     try {
-      const finalEquipment = equipmentMode === 'CUSTOM' ? editEquipment.trim() : (equipmentMode || undefined);
+      const finalEquipment = equipmentMode === 'CUSTOM' ? editEquipment.trim() : equipmentMode;
 
       const updated = exercises.map(ex => {
         if (ex.id === editingExercise.id) {
@@ -200,7 +200,7 @@ export default function ExerciseDatabase({
             ...ex,
             name: trimmedName,
             category: editCategory,
-            equipment: finalEquipment || undefined,
+            equipment: finalEquipment,
           };
         }
         return ex;

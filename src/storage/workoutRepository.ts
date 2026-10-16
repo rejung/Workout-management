@@ -185,12 +185,12 @@ export const workoutRepository = {
         }
 
         let equipment = ex.equipment;
-        if (!equipment && def?.equipment) {
+        if (equipment === undefined && def?.equipment) {
           equipment = def.equipment;
         }
 
         let canonicalName = ex.canonicalName;
-        if (!canonicalName && def?.canonicalName) {
+        if (canonicalName === undefined && def?.canonicalName) {
           canonicalName = def.canonicalName;
         }
 
