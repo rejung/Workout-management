@@ -395,13 +395,17 @@ export function applyCanonicalExerciseMigration(
     return true;
   });
 
-  // Ensure canonical exercises for active/referenced merge groups exist in updatedExercises
+  // Ensure canonical exercises for active/referenced merge groups exist in updatedExercises only if a duplicate was removed or migrated
   CANONICAL_MERGE_GROUPS.forEach(rule => {
-    const isReferencedInLogs = updatedLogs.some(l => l.exercises.some(s => s.exerciseId === rule.canonicalId));
-    const isReferencedInRoutines = updatedRoutines.some(r => r.exercises.some(e => e.exerciseId === rule.canonicalId));
     const wasDuplicateRemoved = removedDuplicateExercises.some(d => rule.matchIds.includes(d.id));
+    const hadDuplicateMigratedInLogs = logs.some(l =>
+      l.exercises.some(s => s.exerciseId !== rule.canonicalId && (rule.matchIds.includes(s.exerciseId) || (rule.matchNormalizedNames.includes(normalizeExerciseCanonicalName(s.exerciseName)) && s.category === rule.category)))
+    );
+    const hadDuplicateMigratedInRoutines = routines.some(r =>
+      r.exercises.some(e => e.exerciseId !== rule.canonicalId && (rule.matchIds.includes(e.exerciseId) || (rule.matchNormalizedNames.includes(normalizeExerciseCanonicalName(e.exerciseName)) && e.category === rule.category)))
+    );
 
-    if (isReferencedInLogs || isReferencedInRoutines || wasDuplicateRemoved) {
+    if (wasDuplicateRemoved || hadDuplicateMigratedInLogs || hadDuplicateMigratedInRoutines) {
       if (!updatedExercises.some(e => e.id === rule.canonicalId)) {
         const canonicalDef = defaultExercises.find(d => d.id === rule.canonicalId);
         if (canonicalDef) {

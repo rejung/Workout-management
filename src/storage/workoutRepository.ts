@@ -150,85 +150,65 @@ export const workoutRepository = {
       setRawStorageItem(routinesRestoredKeyV8, 'true');
     }
 
-    // 4. Ensure all default exercises (including the custom ones added for the restored routines) are present and fully normalized in localStorage
-    let exercises = storage.getItem<Exercise[]>(EXERCISES_KEY);
-    let exercisesChanged = false;
+    // 4. Ensure exercise library is safely loaded without overwriting user customizations or re-adding deleted default exercises
+    const rawExercises = getRawStorageItem(EXERCISES_KEY);
 
-    if (!exercises || !Array.isArray(exercises)) {
+    let exercises: Exercise[];
+    if (rawExercises === null) {
+      // Key is genuinely absent (fresh install) -> initialize with default exercises
       exercises = DEFAULT_EXERCISES.filter(ex => !isRemovedExerciseName(ex.name) && !isRemovedExerciseName(ex.id));
-      exercisesChanged = true;
-    }
-
-    // Filter out removed exercises if present in stored array
-    const beforeLen = exercises.length;
-    exercises = exercises.filter(ex => !isRemovedExerciseName(ex.name) && !isRemovedExerciseName(ex.id));
-    if (exercises.length !== beforeLen) {
-      exercisesChanged = true;
-    }
-
-    // Map existing exercises to make sure they have a correct logType, category, and canonicalName
-    exercises = exercises.map(ex => {
-      const def = DEFAULT_EXERCISES.find(d => d.id === ex.id || d.name === ex.name);
-      const guessed = def?.logType || guessLogType(ex.name, ex.category);
-      
-      let category = ex.category;
-      const lowerName = ex.name.toLowerCase();
-      if (lowerName.includes('풀다운') || lowerName.includes('pulldown') || lowerName.includes('랫풀') || lowerName.includes('렛풀') || lowerName.includes('lat pull')) {
-        category = 'Back';
-      } else if (def && def.category && ex.category !== def.category) {
-        category = def.category;
-      }
-
-      let logType = ex.logType;
-      if (!logType) {
-        logType = guessed;
-        exercisesChanged = true;
-      }
-      
-      let canonicalName = ex.canonicalName;
-      if (def && def.canonicalName && !canonicalName) {
-        canonicalName = def.canonicalName;
-        exercisesChanged = true;
-      }
-
-      let equipment = ex.equipment;
-      if (def && def.equipment && !equipment) {
-        equipment = def.equipment;
-        exercisesChanged = true;
-      }
-
-      const updatedEx = {
-        ...ex,
-        category,
-        logType,
-        canonicalName,
-        equipment,
-      };
-
-      if (
-        updatedEx.category !== ex.category ||
-        updatedEx.logType !== ex.logType ||
-        updatedEx.canonicalName !== ex.canonicalName ||
-        updatedEx.equipment !== ex.equipment
-      ) {
-        exercisesChanged = true;
-      }
-
-      return updatedEx;
-    });
-
-    // Ensure all required default exercises exist
-    DEFAULT_EXERCISES.forEach(req => {
-      if (!isRemovedExerciseName(req.name) && !isRemovedExerciseName(req.id)) {
-        if (!exercises!.some(ex => ex.id === req.id || ex.name === req.name)) {
-          exercises!.push(req);
-          exercisesChanged = true;
-        }
-      }
-    });
-
-    if (exercisesChanged) {
       storage.setItem(EXERCISES_KEY, exercises);
+    } else {
+      // Existing key -> strictly parse JSON and validate array structure
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(rawExercises);
+      } catch (err: any) {
+        throw new Error(`Failed to parse exercises from storage ("${EXERCISES_KEY}"): ${err.message || err}`);
+      }
+
+      if (!Array.isArray(parsed)) {
+        throw new Error(`Invalid exercises data in storage ("${EXERCISES_KEY}"): expected JSON array, received ${typeof parsed}`);
+      }
+
+      // Valid array (including [] and custom exercises): preserve as-is!
+      exercises = (parsed as Exercise[]).filter(ex => !isRemovedExerciseName(ex.name) && !isRemovedExerciseName(ex.id));
+
+      // Non-destructive fallback for missing properties (e.g. if an older exercise record completely lacked logType)
+      // Never overwrite user-modified name, category, equipment, or logType, and NEVER re-add deleted exercises!
+      let exercisesChanged = exercises.length !== (parsed as Exercise[]).length;
+      exercises = exercises.map(ex => {
+        const def = DEFAULT_EXERCISES.find(d => d.id === ex.id);
+        let logType = ex.logType;
+        if (!logType) {
+          logType = def?.logType || guessLogType(ex.name, ex.category);
+        }
+
+        let equipment = ex.equipment;
+        if (!equipment && def?.equipment) {
+          equipment = def.equipment;
+        }
+
+        let canonicalName = ex.canonicalName;
+        if (!canonicalName && def?.canonicalName) {
+          canonicalName = def.canonicalName;
+        }
+
+        if (logType !== ex.logType || equipment !== ex.equipment || canonicalName !== ex.canonicalName) {
+          exercisesChanged = true;
+          return {
+            ...ex,
+            logType,
+            equipment,
+            canonicalName,
+          };
+        }
+        return ex;
+      });
+
+      if (exercisesChanged) {
+        storage.setItem(EXERCISES_KEY, exercises);
+      }
     }
 
     // 5. One-time Legacy Custom Exercise Remapping Patch
@@ -236,7 +216,7 @@ export const workoutRepository = {
     if (getRawStorageItem(v1RemappingPatchKey) !== 'true') {
       const currentLogs = this.getLogs();
       const currentRoutines = this.getRoutines();
-      const currentExercises = storage.getItem<Exercise[]>(EXERCISES_KEY) || [];
+      const currentExercises = this.getExercises();
 
       const patchResult = applyV1CustomExerciseRemappingPatch(
         currentLogs,
@@ -259,7 +239,7 @@ export const workoutRepository = {
     if (getRawStorageItem(canonicalMergePatchKey) !== 'true') {
       const currentLogs = this.getLogs();
       const currentRoutines = this.getRoutines();
-      const currentExercises = storage.getItem<Exercise[]>(EXERCISES_KEY) || [];
+      const currentExercises = this.getExercises();
 
       const migrationResult = applyCanonicalExerciseMigration(
         currentLogs,
@@ -268,9 +248,15 @@ export const workoutRepository = {
         DEFAULT_EXERCISES
       );
 
-      this.saveLogs(migrationResult.updatedLogs);
-      this.saveRoutines(migrationResult.updatedRoutines);
-      this.saveExercises(migrationResult.updatedExercises);
+      if (
+        migrationResult.migratedWorkoutRefs > 0 ||
+        migrationResult.migratedRoutineRefs > 0 ||
+        migrationResult.removedDuplicateExercises.length > 0
+      ) {
+        this.saveLogs(migrationResult.updatedLogs);
+        this.saveRoutines(migrationResult.updatedRoutines);
+        this.saveExercises(migrationResult.updatedExercises);
+      }
 
       setRawStorageItem(canonicalMergePatchKey, 'true');
     }
@@ -382,15 +368,25 @@ export const workoutRepository = {
   },
 
   /**
-   * Fetches all exercises. If empty, seeds with default exercises.
-   * Pure reader with no side-effects or inline database updates.
+   * Fetches all exercises. If key is absent, returns default exercises.
+   * If key exists, parses JSON strictly and returns valid array (including []).
+   * Distinguishes key absence from read/parse failure, preserving raw data on errors.
    */
   getExercises(): Exercise[] {
-    const exercises = storage.getItem<Exercise[]>(EXERCISES_KEY);
-    if (exercises && Array.isArray(exercises)) {
-      return exercises.filter(ex => !isRemovedExerciseName(ex.name) && !isRemovedExerciseName(ex.id));
+    const rawExercises = getRawStorageItem(EXERCISES_KEY);
+    if (rawExercises === null) {
+      return DEFAULT_EXERCISES.filter(ex => !isRemovedExerciseName(ex.name) && !isRemovedExerciseName(ex.id));
     }
-    return DEFAULT_EXERCISES.filter(ex => !isRemovedExerciseName(ex.name) && !isRemovedExerciseName(ex.id));
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rawExercises);
+    } catch (err: any) {
+      throw new Error(`Failed to parse exercises from storage ("${EXERCISES_KEY}"): ${err.message || err}`);
+    }
+    if (!Array.isArray(parsed)) {
+      throw new Error(`Invalid exercises data in storage ("${EXERCISES_KEY}"): expected JSON array, received ${typeof parsed}`);
+    }
+    return (parsed as Exercise[]).filter(ex => !isRemovedExerciseName(ex.name) && !isRemovedExerciseName(ex.id));
   },
 
   /**
@@ -410,6 +406,16 @@ export const workoutRepository = {
     }
     const exercises = this.getExercises();
     const updated = [exercise, ...exercises];
+    this.saveExercises(updated);
+    return updated;
+  },
+
+  /**
+   * Updates an existing exercise.
+   */
+  updateExercise(exercise: Exercise): Exercise[] {
+    const exercises = this.getExercises();
+    const updated = exercises.map(e => e.id === exercise.id ? exercise : e);
     this.saveExercises(updated);
     return updated;
   },
