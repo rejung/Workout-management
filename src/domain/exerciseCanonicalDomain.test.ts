@@ -201,6 +201,40 @@ export function runCanonicalMigrationTests() {
   const resG4 = applyCanonicalExerciseMigration(g4_logs, [], [], DEFAULT_EXERCISES);
   assert(resG4.updatedLogs[0].exercises[0].exerciseId === 'triceps-pushdown', 'Group 4: 케이블 푸시다운 migrated to triceps-pushdown');
 
+  // Case 11: Name-matched duplicate with custom ID -> duplicate removed and canonical exercise guaranteed
+  const c11_exs: Exercise[] = [
+    { id: 'user-uuid-123', name: '케이블 로우', category: 'Back', logType: 'STANDARD' }
+  ];
+  const res11_1 = applyCanonicalExerciseMigration([], [], c11_exs, DEFAULT_EXERCISES);
+  assert(res11_1.updatedExercises.length === 1, 'Case 11: Merged into exactly 1 exercise');
+  assert(res11_1.updatedExercises[0].id === 'seated-row', 'Case 11: Canonical seated-row is created/present');
+  assert(!res11_1.updatedExercises.some(e => e.id === 'user-uuid-123'), 'Case 11: Duplicate user-uuid-123 is removed');
+
+  // Case 11 Re-application: Idempotent with no further changes
+  const res11_2 = applyCanonicalExerciseMigration([], [], res11_1.updatedExercises, DEFAULT_EXERCISES);
+  assert(res11_2.updatedExercises.length === 1 && res11_2.updatedExercises[0].id === 'seated-row', 'Case 11: Re-application produces identical 1 exercise');
+  assert(res11_2.migratedWorkoutRefs === 0 && res11_2.migratedRoutineRefs === 0 && res11_2.removedDuplicateExercises.length === 0, 'Case 11: No changes on re-application');
+
+  // Case 12: Explicitly deleted canonical exercise is NOT regenerated when no duplicates/references exist
+  const c12_exs: Exercise[] = [
+    { id: 'bench-press', name: '벤치프레스', category: 'Chest', logType: 'STANDARD' }
+  ];
+  const res12 = applyCanonicalExerciseMigration([], [], c12_exs, DEFAULT_EXERCISES);
+  assert(!res12.updatedExercises.some(e => e.id === 'seated-row'), 'Case 12: Deleted seated-row is NOT regenerated when no duplicates exist');
+  assert(!res12.updatedExercises.some(e => e.id === 'band-pull-up'), 'Case 12: Deleted band-pull-up is NOT regenerated');
+  assert(res12.updatedExercises.length === 1 && res12.updatedExercises[0].id === 'bench-press', 'Case 12: Only bench-press remains');
+
+  // Case 13: Existing user customizations on canonical exercise are preserved
+  const c13_exs: Exercise[] = [
+    { id: 'seated-row', name: '나만의 시티드 로우', category: 'Back', logType: 'STANDARD', equipment: 'CUSTOM_MACHINE' },
+    { id: 'user-uuid-456', name: '시티드 케이블 로우', category: 'Back', logType: 'STANDARD' }
+  ];
+  const res13 = applyCanonicalExerciseMigration([], [], c13_exs, DEFAULT_EXERCISES);
+  assert(res13.updatedExercises.length === 1, 'Case 13: Duplicate merged into existing canonical');
+  assert(res13.updatedExercises[0].id === 'seated-row', 'Case 13: Canonical seated-row exists');
+  assert(res13.updatedExercises[0].name === '나만의 시티드 로우', 'Case 13: User customized name preserved');
+  assert(res13.updatedExercises[0].equipment === 'CUSTOM_MACHINE', 'Case 13: User customized equipment preserved');
+
   console.log('🎉 All Exercise Database Canonical Merge tests PASSED!');
   return true;
 }

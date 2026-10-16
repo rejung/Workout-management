@@ -182,13 +182,11 @@ export function applyCanonicalExerciseMigration(
   const canonicalMap = new Map<string, { id: string; name: string; category: Exercise['category'] }>();
   const duplicateIdSet = new Set<string>();
 
-  // Ensure canonical definitions exist in target dictionary
+  // Ensure canonical definitions exist in target dictionary (user exercises override defaults)
   const canonicalExerciseLookup = new Map<string, Exercise>();
   defaultExercises.forEach(def => canonicalExerciseLookup.set(def.id, def));
   exercises.forEach(ex => {
-    if (!canonicalExerciseLookup.has(ex.id)) {
-      canonicalExerciseLookup.set(ex.id, ex);
-    }
+    canonicalExerciseLookup.set(ex.id, ex);
   });
 
   // 1. Identify which exercises are duplicates to be merged into canonical
@@ -397,17 +395,32 @@ export function applyCanonicalExerciseMigration(
 
   // Ensure canonical exercises for active/referenced merge groups exist in updatedExercises only if a duplicate was removed or migrated
   CANONICAL_MERGE_GROUPS.forEach(rule => {
-    const wasDuplicateRemoved = removedDuplicateExercises.some(d => rule.matchIds.includes(d.id));
+    const wasDuplicateRemoved = removedDuplicateExercises.some(d => {
+      const target = canonicalMap.get(d.id);
+      return (target && target.id === rule.canonicalId) || rule.matchIds.includes(d.id);
+    });
     const hadDuplicateMigratedInLogs = logs.some(l =>
-      l.exercises.some(s => s.exerciseId !== rule.canonicalId && (rule.matchIds.includes(s.exerciseId) || (rule.matchNormalizedNames.includes(normalizeExerciseCanonicalName(s.exerciseName)) && s.category === rule.category)))
+      l.exercises.some(s => {
+        if (s.exerciseId === rule.canonicalId) return false;
+        const target = canonicalMap.get(s.exerciseId);
+        if (target && target.id === rule.canonicalId) return true;
+        const mergeRule = getCanonicalMergeRule(s.exerciseId, s.exerciseName, s.category);
+        return mergeRule?.canonicalId === rule.canonicalId;
+      })
     );
     const hadDuplicateMigratedInRoutines = routines.some(r =>
-      r.exercises.some(e => e.exerciseId !== rule.canonicalId && (rule.matchIds.includes(e.exerciseId) || (rule.matchNormalizedNames.includes(normalizeExerciseCanonicalName(e.exerciseName)) && e.category === rule.category)))
+      r.exercises.some(e => {
+        if (e.exerciseId === rule.canonicalId) return false;
+        const target = canonicalMap.get(e.exerciseId);
+        if (target && target.id === rule.canonicalId) return true;
+        const mergeRule = getCanonicalMergeRule(e.exerciseId, e.exerciseName, e.category);
+        return mergeRule?.canonicalId === rule.canonicalId;
+      })
     );
 
     if (wasDuplicateRemoved || hadDuplicateMigratedInLogs || hadDuplicateMigratedInRoutines) {
       if (!updatedExercises.some(e => e.id === rule.canonicalId)) {
-        const canonicalDef = defaultExercises.find(d => d.id === rule.canonicalId);
+        const canonicalDef = canonicalExerciseLookup.get(rule.canonicalId) || defaultExercises.find(d => d.id === rule.canonicalId);
         if (canonicalDef) {
           updatedExercises.push(canonicalDef);
         } else {
