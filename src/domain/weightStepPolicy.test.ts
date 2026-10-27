@@ -308,45 +308,15 @@ export function runWeightStepPolicyTests(): { passed: boolean; message: string }
   assert(!isCableExercise({ id: 'bench-press', name: '벤치프레스', equipment: 'BARBELL' }), 'Cable: bench-press is not cable');
   assert(!isCableExercise({ id: 'dumbbell-curl', name: '덤벨 컬', equipment: 'DUMBBELL' }), 'Cable: dumbbell-curl is not cable');
 
-  // Case 12: Cable direct input values (7, 11, 13.5kg) without rounding
-  const cableTestInputs = [7, 11, 13.5, 0];
-  for (const val of cableTestInputs) {
-    const isDirectInputAllowed = !isNaN(val) && isFinite(val) && val >= 0;
-    assert(isDirectInputAllowed, `Cable direct input ${val}kg is valid non-negative finite number`);
-  }
-
-  // Case 13: Direct input values must not be rounded to 2.5 multiples
+  // Case 12: +/- button steps preserve separate 2.5kg increment on non-multiple base
   const direct7 = 7;
   const direct11 = 11;
   const direct13_5 = 13.5;
-  assert(direct7 === 7, 'Cable: 7kg remains 7kg (no 2.5kg rounding)');
-  assert(direct11 === 11, 'Cable: 11kg remains 11kg (no 2.5kg rounding)');
-  assert(direct13_5 === 13.5, 'Cable: 13.5kg remains 13.5kg (no 2.5kg rounding)');
-
-  // Case 14: +/- button steps preserve separate 2.5kg increment on non-multiple base
   const stepIncrement = getWeightStep({ id: 'seated-row', equipment: 'CABLE' });
   assert(stepIncrement === 2.5, 'Cable: +/- button step is 2.5kg');
   assert(Number((direct7 + stepIncrement).toFixed(2)) === 9.5, 'Cable: 7kg + 2.5kg = 9.5kg');
   assert(Number((direct11 + stepIncrement).toFixed(2)) === 13.5, 'Cable: 11kg + 2.5kg = 13.5kg');
   assert(Number((direct13_5 + stepIncrement).toFixed(2)) === 16.0, 'Cable: 13.5kg + 2.5kg = 16.0kg');
-
-  // Case 15: Input validation rules during submit (empty, negative, NaN, Infinity blocked)
-  function validateWeightOnSubmit(raw: unknown): boolean {
-    if (raw === '' || raw === null || raw === undefined) return false;
-    const n = Number(raw);
-    if (isNaN(n) || !isFinite(n) || n < 0) return false;
-    return true;
-  }
-  assert(!validateWeightOnSubmit(''), 'Validation: empty string blocked on submit');
-  assert(!validateWeightOnSubmit(null), 'Validation: null blocked on submit');
-  assert(!validateWeightOnSubmit(undefined), 'Validation: undefined blocked on submit');
-  assert(!validateWeightOnSubmit(-1), 'Validation: negative number blocked on submit');
-  assert(!validateWeightOnSubmit(NaN), 'Validation: NaN blocked on submit');
-  assert(!validateWeightOnSubmit(Infinity), 'Validation: Infinity blocked on submit');
-  assert(validateWeightOnSubmit(0), 'Validation: 0kg allowed on submit');
-  assert(validateWeightOnSubmit(7), 'Validation: 7kg allowed on submit');
-  assert(validateWeightOnSubmit('11'), 'Validation: "11" allowed on submit');
-  assert(validateWeightOnSubmit('13.5'), 'Validation: "13.5" allowed on submit');
 
   return results;
 }

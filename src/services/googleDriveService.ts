@@ -136,7 +136,6 @@ export class DriveApiError extends Error {
 }
 
 // In-memory token cache (NEVER persisted to LocalStorage, IndexedDB, or logs)
-let isSigningIn = false;
 let cachedAccessToken: string | null = null;
 
 // Clean token getter/setter for testing & runtime
@@ -519,7 +518,6 @@ export const googleSignIn = async (
   }
 
   try {
-    isSigningIn = true;
     const provider = createGoogleDriveProvider({ forceConsent, forceAccountSelection });
     const result = await signInWithPopup(auth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
@@ -558,8 +556,6 @@ export const googleSignIn = async (
       null,
       `Google 로그인 실패: ${error?.message || '알 수 없는 오류'}`
     );
-  } finally {
-    isSigningIn = false;
   }
 };
 
