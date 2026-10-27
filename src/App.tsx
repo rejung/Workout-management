@@ -6,7 +6,6 @@
 import { useState, useEffect } from 'react';
 import { WorkoutLog, Routine, Exercise } from './types';
 import { WeightLog, generateUUID } from './utils/workoutEngine';
-import { DEFAULT_EXERCISES, DEFAULT_ROUTINES } from './constants';
 import { getLocalDateString } from './utils/dateUtils';
 import { workoutRepository } from './storage/workoutRepository';
 import { weightRepository } from './storage/weightRepository';
@@ -14,7 +13,6 @@ import AnalyticsDashboard from './components/AnalyticsDashboard';
 import WorkoutForm from './components/WorkoutForm';
 import QuickInputView from './components/QuickInputView';
 import RoutineManager from './components/RoutineManager';
-import ExerciseDatabase from './components/ExerciseDatabase';
 import SettingsView from './components/settings/SettingsView';
 import WorkoutHistory from './components/WorkoutHistory';
 import { goalRepository } from './storage/goalRepository';
@@ -25,17 +23,10 @@ import {
   Dumbbell, 
   Settings, 
   History, 
-  Calendar, 
-  Clock, 
-  MessageSquare,
-  ChevronRight,
-  ChevronDown,
-  Trash2,
   Edit2,
   Sparkles,
   AlertCircle,
-  HelpCircle,
-  Copy
+  HelpCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -48,7 +39,6 @@ export default function App() {
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [weightLogs, setWeightLogs] = useState<WeightLog[]>([]);
   const [editingLog, setEditingLog] = useState<WorkoutLog | null>(null);
-  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   const [useDetailedForm, setUseDetailedForm] = useState<boolean>(false);
   const [preselectedRoutineId, setPreselectedRoutineId] = useState<string>('');
   const [appLoading, setAppLoading] = useState<boolean>(true);

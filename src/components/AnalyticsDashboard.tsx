@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Calendar, Sparkles, ArrowRight, ChevronDown, ChevronUp } from 'lucide-react';
+import { Calendar, ArrowRight } from 'lucide-react';
 import { WorkoutLog, Exercise } from '../types';
 import DashboardHeader from './dashboard/DashboardHeader';
 import SummaryCards from './dashboard/SummaryCards';
@@ -14,32 +14,18 @@ import {
   getMainLiftOfLog,
   calculateWeightMetrics,
   getE1RMChange,
-  getCardioMileage,
-  getBestWorkset,
   getNextRecommendation,
   getBestPR,
   isSquat,
   isBenchPress,
   isDeadlift,
   isOHP,
-  WeightLog,
-  selectRunningPB
+  WeightLog
 } from '../utils/workoutEngine';
 import { weightRepository } from '../storage/weightRepository';
-import { getLocalDateString } from '../utils/dateUtils';
 import { getLast7DaysRange, getLastNDaysRange, getCurrentWeekRange } from '../utils/dateRange';
 import { useGoalSettings } from '../hooks/useGoalSettings';
 import { extractCardioRecord } from '../domain/cardio';
-
-const formatDateKorean = (dateStr: string) => {
-  const parts = dateStr.split('-');
-  if (parts.length === 3) {
-    const month = parseInt(parts[1], 10);
-    const day = parseInt(parts[2], 10);
-    return `${month}월 ${day}일`;
-  }
-  return dateStr;
-};
 
 const formatToMMDD = (dateStr: string) => {
   const parts = dateStr.split('-');
@@ -129,7 +115,6 @@ export default function AnalyticsDashboard({
 }: AnalyticsDashboardProps) {
   const [weightLogs, setWeightLogs] = useState<WeightLog[]>([]);
   const [isWeightModalOpen, setIsWeightModalOpen] = useState<boolean>(false);
-  const [showDetailedReasons, setShowDetailedReasons] = useState<boolean>(false);
   const { goalSettings, threeLiftGoal } = useGoalSettings();
 
   useEffect(() => {
@@ -150,17 +135,6 @@ export default function AnalyticsDashboard({
   const benchChange = getE1RMChange(logs, isBenchPress, p1Start, p2Start, p3Start);
   const deadliftChange = getE1RMChange(logs, isDeadlift, p1Start, p2Start, p3Start);
   const ohpChange = getE1RMChange(logs, isOHP, p1Start, p2Start, p3Start);
-
-  // Dynamic header summary string
-  const weightSummaryPart = weightMetrics.current !== null && weightMetrics.diff !== null
-    ? `체중 ${weightMetrics.diff >= 0 ? '+' : ''}${weightMetrics.diff.toFixed(1)}kg, `
-    : '체중 기록 없음, ';
-
-  const headerSummaryText = `${weightSummaryPart}` +
-    `스쿼트 ${squatChange.diff4W >= 0 ? '+' : ''}${squatChange.diff4W}kg, ` +
-    `벤치프레스 ${benchChange.diff4W >= 0 ? '+' : ''}${benchChange.diff4W}kg, ` +
-    `데드리프트 ${deadliftChange.diff4W >= 0 ? '+' : ''}${deadliftChange.diff4W}kg, ` +
-    `OHP ${ohpChange.diff4W >= 0 ? '+' : ''}${ohpChange.diff4W}kg`;
 
   // 2. SummaryCards Props
   const squatPR = getBestPR(logs, isSquat);
@@ -230,46 +204,14 @@ export default function AnalyticsDashboard({
     },
   ];
 
-  // 3. CardioMileage Props
-  const cardioMetrics = getCardioMileage(logs, p1Start, p2Start);
-  const mileageRows = [
-    { label: '최근 4주', value: `${cardioMetrics.recent4Weeks.toFixed(1)} km` },
-    { label: '최근 8주', value: `${cardioMetrics.recent8Weeks.toFixed(1)} km` },
-    { label: '전체 누적 거리', value: `${cardioMetrics.total.toFixed(1)} km` },
-  ];
+  // 3. Recommended Workout
   const nextRecommendation = getNextRecommendation(logs, goalSettings);
-  const runningPBs = selectRunningPB(logs);
-
-  // 4. BestWorksets Props
-  const squatBest = {
-    ...getBestWorkset(logs, isSquat, '스쿼트', '100 kg × 5회 × 5세트', '2026-06-09', '볼륨 점진적 과부하 달성', 100),
-    goal: goalSettings.squatGoal
-  };
-  const benchBest = {
-    ...getBestWorkset(logs, isBenchPress, '벤치프레스', '70 kg × 3회 × 3세트', '2026-06-25', '안정적인 정점 수축 통제', 70),
-    goal: goalSettings.benchGoal
-  };
-  const deadliftBest = {
-    ...getBestWorkset(logs, isDeadlift, '데드리프트', '130 kg × 5회 × 1세트', '2026-06-23', '완벽한 락아웃 전신 고정', 130),
-    goal: goalSettings.deadliftGoal
-  };
-  const ohpBest = {
-    ...getBestWorkset(logs, isOHP, 'OHP', '50 kg × 5회 × 5세트', '2026-06-21', '코어 텐션 유지 견착 완수', 50),
-    goal: goalSettings.ohpGoal
-  };
-
-  const bestWorksets = [
-    squatBest,
-    benchBest,
-    deadliftBest,
-    ohpBest
-  ];
 
   return (
     <div id="analytics-dashboard-view" className="bg-slate-950 text-slate-100 p-4 sm:p-5 lg:p-6 space-y-5 sm:space-y-6 rounded-3xl border border-slate-800/40">
       
       {/* Dashboard Title Header */}
-      <DashboardHeader summaryText={headerSummaryText} />
+      <DashboardHeader />
 
       {/* 핵심 KPI 카드 (오늘의 판단) */}
       <SummaryCards
