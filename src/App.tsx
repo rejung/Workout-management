@@ -24,7 +24,6 @@ import {
   Settings, 
   History, 
   Edit2,
-  Sparkles,
   AlertCircle,
   HelpCircle
 } from 'lucide-react';
@@ -221,12 +220,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-zinc-50 flex flex-col font-sans text-zinc-900 antialiased selection:bg-zinc-950 selection:text-white">
-      {/* Dynamic Top Announcement Panel */}
-      <div className="bg-zinc-950 text-white text-xs py-2 px-4 text-center font-medium flex items-center justify-center gap-1.5">
-        <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-        <span>모든 운동 데이터는 브라우저 로컬 저장소에 안전하게 기록됩니다.</span>
-      </div>
-
       <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-zinc-200 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
           {/* Brand logo acts as Home (Dashboard) click target */}
