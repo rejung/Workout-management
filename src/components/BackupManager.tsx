@@ -472,21 +472,11 @@ export default function BackupManager({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    console.log("Selected File", file);
-
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
         const rawText = event.target?.result as string;
-        console.log("Raw Text", rawText?.slice(0, 300));
-        console.log("Raw Type", typeof rawText);
-
-        const parsed = snapshotService.parseSnapshot(rawText);
-        console.log("Parsed JSON", parsed);
-        console.log("Validation Input", rawText);
-
         const validation = snapshotService.validateSnapshot(rawText);
-        console.log("Health Score Input", validation.snapshot);
 
         if (!validation.isValid || !validation.snapshot) {
           const errorPreview = {
@@ -504,7 +494,6 @@ export default function BackupManager({
             healthScore: validation.healthScore || 0,
             healthReasons: validation.healthReasons || ['검증 실패']
           };
-          console.log("Preview Data", errorPreview);
           setPreviewData(errorPreview);
           return;
         }
@@ -532,7 +521,6 @@ export default function BackupManager({
           healthScore: validation.healthScore,
           healthReasons: validation.healthReasons
         };
-        console.log("Preview Data", successPreview);
         setPreviewData(successPreview);
 
       } catch (err) {
@@ -631,22 +619,6 @@ export default function BackupManager({
 
     setV1Preview(null);
     showFeedback('구글 스프레드시트 버전 1 데이터가 무결하게 마이그레이션되었습니다!');
-  };
-
-  const handleDownloadE1RMDiagnostics = () => {
-    const debugDiagnostics = (window as any).__E1RM_DIAGNOSTICS__ || [];
-    const blob = new Blob(
-      [JSON.stringify(debugDiagnostics, null, 2)],
-      { type: "application/json" }
-    );
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'e1rm_diagnostics.json';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   };
 
   return (

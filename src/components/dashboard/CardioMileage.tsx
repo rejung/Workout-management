@@ -4,15 +4,10 @@
  */
 
 import { useState } from 'react';
-import { Flame, Compass, ChevronRight, BarChart2, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { Compass, ChevronRight, BarChart2, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import { RecommendationResult } from '../../utils/workoutEngine';
 import { formatNextRecommendationDate } from '../../utils/dateUtils';
 import { motion, AnimatePresence } from 'motion/react';
-
-interface CardioMileageRow {
-  label: string;
-  value: string;
-}
 
 interface RecommendedWorkoutCardProps {
   nextRecommendation?: RecommendationResult;
@@ -380,102 +375,3 @@ export function RecommendedWorkoutCard({
   );
 }
 
-interface CardioMileageCardProps {
-  mileageRows?: CardioMileageRow[];
-  runningPBs?: { best3km: string; best5km: string };
-}
-
-export function CardioMileageCard({ 
-  mileageRows: propMileageRows, 
-  runningPBs 
-}: CardioMileageCardProps) {
-  const defaultMileageRows = [
-    { label: '최근 4주', value: '17.0 km' },
-    { label: '최근 8주', value: '46.0 km' },
-    { label: '누적 거리', value: '130.0 km' },
-  ];
-
-  const mileageRows = propMileageRows || defaultMileageRows;
-
-  // Extract values cleanly
-  const totalRow = mileageRows.find(row => row.label.includes('누적 거리')) || { label: '누적 거리', value: '130.0 km' };
-  const recent4WRow = mileageRows.find(row => row.label.includes('최근 4주')) || { label: '최근 4주', value: '17.0 km' };
-  const recent8WRow = mileageRows.find(row => row.label.includes('최근 8주')) || { label: '최근 8주', value: '46.0 km' };
-
-  return (
-    <div id="cardio-mileage-card" className="bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-7 shadow-lg flex flex-col justify-between transition-all duration-300 hover:border-emerald-500/10">
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 bg-emerald-500/10 text-emerald-400 rounded-lg border border-emerald-500/20">
-            <Flame className="w-4 h-4" />
-          </div>
-          <h2 className="text-xs font-bold text-slate-400 tracking-wider uppercase">러닝 마일리지</h2>
-        </div>
-
-        {/* Top Achievement Highlights Grid */}
-        <div className="grid grid-cols-3 gap-3">
-          {/* 누적 거리 */}
-          <div className="bg-slate-950/40 border border-slate-850 p-3.5 rounded-xl space-y-1">
-            <span className="text-[9px] text-slate-500 font-bold block">누적 거리</span>
-            <span className="text-lg font-black text-emerald-400 font-mono tracking-tight block leading-none">
-              {totalRow.value}
-            </span>
-          </div>
-          {/* 3K PB */}
-          <div className="bg-slate-950/40 border border-slate-850 p-3.5 rounded-xl space-y-1">
-            <span className="text-[9px] text-slate-500 font-bold block leading-normal">3K PB</span>
-            <span className="text-base font-black text-white font-mono tracking-tight block leading-none pt-0.5">
-              {runningPBs?.best3km || '—'}
-            </span>
-          </div>
-          {/* 5K PB */}
-          <div className="bg-slate-950/40 border border-slate-850 p-3.5 rounded-xl space-y-1">
-            <span className="text-[9px] text-slate-500 font-bold block leading-normal">5K PB</span>
-            <span className="text-base font-black text-white font-mono tracking-tight block leading-none pt-0.5">
-              {runningPBs?.best5km || '—'}
-            </span>
-          </div>
-        </div>
-
-        {/* Subtle Divider */}
-        <div className="border-t border-slate-800/40 my-1" />
-
-        {/* Periodic Statistics Trend */}
-        <div>
-          <span className="text-[10px] font-bold text-slate-400 block mb-2.5 uppercase tracking-wider">최근 거리</span>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 bg-slate-950/20 rounded-xl border border-slate-850 flex justify-between items-center">
-              <span className="font-bold text-slate-300 text-xs">최근 4주</span>
-              <span className="font-extrabold text-emerald-400 font-mono text-xs">{recent4WRow.value}</span>
-            </div>
-            <div className="p-3 bg-slate-950/20 rounded-xl border border-slate-850 flex justify-between items-center">
-              <span className="font-bold text-slate-300 text-xs">최근 8주</span>
-              <span className="font-extrabold text-emerald-400 font-mono text-xs">{recent8WRow.value}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface CardioMileageProps {
-  mileageRows?: CardioMileageRow[];
-  nextRecommendation?: RecommendationResult;
-  onStartWorkout?: (routineId: string) => void;
-  runningPBs?: { best3km: string; best5km: string };
-}
-
-export default function CardioMileage({ 
-  mileageRows, 
-  nextRecommendation,
-  onStartWorkout,
-  runningPBs
-}: CardioMileageProps) {
-  return (
-    <div id="cardio-recommendation-group" className="grid grid-cols-1 md:grid-cols-2 gap-5">
-      <CardioMileageCard mileageRows={mileageRows} runningPBs={runningPBs} />
-      <RecommendedWorkoutCard nextRecommendation={nextRecommendation} onStartWorkout={onStartWorkout} />
-    </div>
-  );
-}

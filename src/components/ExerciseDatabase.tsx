@@ -5,8 +5,7 @@
 
 import { useState, useMemo, useEffect, FormEvent } from 'react';
 import { Exercise, MuscleCategory, LogType, WorkoutLog, Routine } from '../types';
-import { Plus, Trash2, Dumbbell, Tag, Grid, Filter, AlertCircle, Copy, Check, Calendar, AlertTriangle, ListOrdered, ClipboardList, Info, Sparkles, RefreshCw, Pencil, X } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Plus, Trash2, Dumbbell, Filter, AlertCircle, Copy, Check, Calendar, AlertTriangle, ListOrdered, ClipboardList, Info, RefreshCw, Pencil, X } from 'lucide-react';
 import { generateUUID } from '../utils/workoutEngine';
 import { isRemovedExerciseName } from '../storage/workoutRepository';
 

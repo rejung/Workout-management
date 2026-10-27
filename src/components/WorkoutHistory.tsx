@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { WorkoutLog, Exercise, SetRecord, LogType } from '../types';
+import { WorkoutLog, Exercise, LogType } from '../types';
 import { formatWorkoutDate } from '../utils/dateUtils';
-import { formatTimeSeconds, formatSetRecord, formatSetRecordsList } from '../utils/formatter';
+import { formatTimeSeconds } from '../utils/formatter';
 import { extractCardioRecord } from '../domain/cardio';
 import { 
   Calendar, 
@@ -19,27 +19,6 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-
-// Cardio duration parsing helpers
-function parseTimeStringToMinutes(timeStr: string): number | null {
-  if (!timeStr || typeof timeStr !== 'string') return null;
-  const parts = timeStr.trim().split(':').map(p => parseInt(p, 10));
-  if (parts.some(isNaN)) return null;
-
-  if (parts.length === 3) {
-    // HH:MM:SS
-    const [hours, minutes, seconds] = parts;
-    return hours * 60 + minutes + Math.floor(seconds / 60);
-  } else if (parts.length === 2) {
-    // MM:SS
-    const [minutes, seconds] = parts;
-    return minutes + Math.floor(seconds / 60);
-  } else if (parts.length === 1) {
-    // Just minutes or raw number
-    return parts[0];
-  }
-  return null;
-}
 
 function getCardioDuration(set: any): string {
   const record = extractCardioRecord(set);
