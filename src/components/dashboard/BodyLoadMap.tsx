@@ -18,6 +18,7 @@ import {
   BODY_OUTLINE_PATHS,
   FRONT_BODY_PATHS,
   BACK_BODY_PATHS,
+  NECK_FINISH_PATHS,
 } from './bodyModelPaths';
 
 export interface BodyLoadMapProps {
@@ -233,78 +234,98 @@ export function BodyLoadMap({ bodyLoad, idPrefix = 'body-load' }: BodyLoadMapPro
                 어깨: {vPushData.status}, 가슴: {hPushData.status}, 앞 허벅지: {kneeData.status}
               </desc>
 
-              {/* Continuous Base Body Silhouette */}
+              {/* Unique ClipPath for clean headless neck cutoff */}
+              <defs>
+                <clipPath id={`${idPrefix}-neck-clip-front`}>
+                  <path d={NECK_FINISH_PATHS.frontClip} />
+                </clipPath>
+              </defs>
+
+              {/* Headless Body Silhouette Group */}
+              <g clipPath={`url(#${idPrefix}-neck-clip-front)`}>
+                {/* Continuous Base Body Silhouette */}
+                <path
+                  d={BODY_OUTLINE_PATHS.front}
+                  fill="#1e293b"
+                  stroke="#334155"
+                  strokeWidth="2"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+
+                {/* Neutral Non-Targeted Muscles (Calves, Arms, Core, etc.) */}
+                <g fill="#1e293b" stroke="#334155" strokeWidth="1" strokeLinejoin="round" strokeLinecap="round">
+                  {FRONT_BODY_PATHS.neutral.map((d, idx) => (
+                    <path key={`front-neutral-${idx}`} d={d} />
+                  ))}
+                </g>
+
+                {/* Active Zone: Shoulders (vertical-push) */}
+                <g data-dimension="vertical-push" fill={vPushColor.fill} stroke={vPushColor.stroke}>
+                  {FRONT_BODY_PATHS.verticalPush.map((d, idx) => (
+                    <path
+                      key={`v-push-${idx}`}
+                      fill={vPushColor.fill}
+                      stroke={vPushColor.stroke}
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                      className="transition-colors duration-200"
+                      d={d}
+                    />
+                  ))}
+                </g>
+
+                {/* Active Zone: Chest (horizontal-push) */}
+                <g data-dimension="horizontal-push" fill={hPushColor.fill} stroke={hPushColor.stroke}>
+                  {FRONT_BODY_PATHS.horizontalPush.map((d, idx) => (
+                    <path
+                      key={`h-push-${idx}`}
+                      fill={hPushColor.fill}
+                      stroke={hPushColor.stroke}
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                      className="transition-colors duration-200"
+                      d={d}
+                    />
+                  ))}
+                </g>
+
+                {/* Active Zone: Front Thighs (knee-dominant-lower-body) */}
+                <g data-dimension="knee-dominant-lower-body" fill={kneeColor.fill} stroke={kneeColor.stroke}>
+                  {FRONT_BODY_PATHS.kneeDominant.map((d, idx) => (
+                    <path
+                      key={`knee-${idx}`}
+                      fill={kneeColor.fill}
+                      stroke={kneeColor.stroke}
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                      className="transition-colors duration-200"
+                      d={d}
+                    />
+                  ))}
+                </g>
+
+                {/* Outer boundary stroke for crisp silhouette finish */}
+                <path
+                  d={BODY_OUTLINE_PATHS.front}
+                  fill="none"
+                  stroke="#475569"
+                  strokeWidth="2"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              </g>
+
+              {/* Smooth curved collar cap at the top of the neck */}
               <path
-                d={BODY_OUTLINE_PATHS.front}
-                fill="#1e293b"
-                stroke="#334155"
-                strokeWidth="2"
-                strokeLinejoin="round"
-                strokeLinecap="round"
-              />
-
-              {/* Neutral Non-Targeted Muscles (Calves, Arms, Core, etc.) */}
-              <g fill="#1e293b" stroke="#334155" strokeWidth="1" strokeLinejoin="round" strokeLinecap="round">
-                {FRONT_BODY_PATHS.neutral.map((d, idx) => (
-                  <path key={`front-neutral-${idx}`} d={d} />
-                ))}
-              </g>
-
-              {/* Active Zone: Shoulders (vertical-push) */}
-              <g data-dimension="vertical-push" fill={vPushColor.fill} stroke={vPushColor.stroke}>
-                {FRONT_BODY_PATHS.verticalPush.map((d, idx) => (
-                  <path
-                    key={`v-push-${idx}`}
-                    fill={vPushColor.fill}
-                    stroke={vPushColor.stroke}
-                    strokeWidth="1.5"
-                    strokeLinejoin="round"
-                    strokeLinecap="round"
-                    className="transition-colors duration-200"
-                    d={d}
-                  />
-                ))}
-              </g>
-
-              {/* Active Zone: Chest (horizontal-push) */}
-              <g data-dimension="horizontal-push" fill={hPushColor.fill} stroke={hPushColor.stroke}>
-                {FRONT_BODY_PATHS.horizontalPush.map((d, idx) => (
-                  <path
-                    key={`h-push-${idx}`}
-                    fill={hPushColor.fill}
-                    stroke={hPushColor.stroke}
-                    strokeWidth="1.5"
-                    strokeLinejoin="round"
-                    strokeLinecap="round"
-                    className="transition-colors duration-200"
-                    d={d}
-                  />
-                ))}
-              </g>
-
-              {/* Active Zone: Front Thighs (knee-dominant-lower-body) */}
-              <g data-dimension="knee-dominant-lower-body" fill={kneeColor.fill} stroke={kneeColor.stroke}>
-                {FRONT_BODY_PATHS.kneeDominant.map((d, idx) => (
-                  <path
-                    key={`knee-${idx}`}
-                    fill={kneeColor.fill}
-                    stroke={kneeColor.stroke}
-                    strokeWidth="1.5"
-                    strokeLinejoin="round"
-                    strokeLinecap="round"
-                    className="transition-colors duration-200"
-                    d={d}
-                  />
-                ))}
-              </g>
-
-              {/* Outer boundary stroke for crisp silhouette finish */}
-              <path
-                d={BODY_OUTLINE_PATHS.front}
+                data-testid="neck-finish-front"
+                d={NECK_FINISH_PATHS.frontCap}
                 fill="none"
                 stroke="#475569"
                 strokeWidth="2"
-                strokeLinejoin="round"
                 strokeLinecap="round"
               />
             </svg>
@@ -324,78 +345,98 @@ export function BodyLoadMap({ bodyLoad, idPrefix = 'body-load' }: BodyLoadMapPro
                 등 중앙: {hPullData.status}, 등 바깥쪽: {vPullData.status}, 둔부 및 뒤 허벅지: {hipData.status}
               </desc>
 
-              {/* Continuous Base Body Silhouette */}
+              {/* Unique ClipPath for clean headless neck cutoff */}
+              <defs>
+                <clipPath id={`${idPrefix}-neck-clip-back`}>
+                  <path d={NECK_FINISH_PATHS.backClip} />
+                </clipPath>
+              </defs>
+
+              {/* Headless Body Silhouette Group */}
+              <g clipPath={`url(#${idPrefix}-neck-clip-back)`}>
+                {/* Continuous Base Body Silhouette */}
+                <path
+                  d={BODY_OUTLINE_PATHS.back}
+                  fill="#1e293b"
+                  stroke="#334155"
+                  strokeWidth="2"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+
+                {/* Neutral Non-Targeted Muscles (Spine, Neck, Arms, Calves, etc.) */}
+                <g fill="#1e293b" stroke="#334155" strokeWidth="1" strokeLinejoin="round" strokeLinecap="round">
+                  {BACK_BODY_PATHS.neutral.map((d, idx) => (
+                    <path key={`back-neutral-${idx}`} d={d} />
+                  ))}
+                </g>
+
+                {/* Active Zone: Mid Back (horizontal-pull: trapezius + upper-back mid) */}
+                <g data-dimension="horizontal-pull" fill={hPullColor.fill} stroke={hPullColor.stroke}>
+                  {BACK_BODY_PATHS.horizontalPull.map((d, idx) => (
+                    <path
+                      key={`h-pull-${idx}`}
+                      fill={hPullColor.fill}
+                      stroke={hPullColor.stroke}
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                      className="transition-colors duration-200"
+                      d={d}
+                    />
+                  ))}
+                </g>
+
+                {/* Active Zone: Outer Back / Lats (vertical-pull: lats) */}
+                <g data-dimension="vertical-pull" fill={vPullColor.fill} stroke={vPullColor.stroke}>
+                  {BACK_BODY_PATHS.verticalPull.map((d, idx) => (
+                    <path
+                      key={`v-pull-${idx}`}
+                      fill={vPullColor.fill}
+                      stroke={vPullColor.stroke}
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                      className="transition-colors duration-200"
+                      d={d}
+                    />
+                  ))}
+                </g>
+
+                {/* Active Zone: Glutes & Posterior Thighs (hip-posterior-chain: gluteal + hamstring) */}
+                <g data-dimension="hip-posterior-chain" fill={hipColor.fill} stroke={hipColor.stroke}>
+                  {BACK_BODY_PATHS.hipPosteriorChain.map((d, idx) => (
+                    <path
+                      key={`hip-${idx}`}
+                      fill={hipColor.fill}
+                      stroke={hipColor.stroke}
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                      className="transition-colors duration-200"
+                      d={d}
+                    />
+                  ))}
+                </g>
+
+                {/* Outer boundary stroke for crisp silhouette finish */}
+                <path
+                  d={BODY_OUTLINE_PATHS.back}
+                  fill="none"
+                  stroke="#475569"
+                  strokeWidth="2"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              </g>
+
+              {/* Smooth curved collar cap at the top of the neck */}
               <path
-                d={BODY_OUTLINE_PATHS.back}
-                fill="#1e293b"
-                stroke="#334155"
-                strokeWidth="2"
-                strokeLinejoin="round"
-                strokeLinecap="round"
-              />
-
-              {/* Neutral Non-Targeted Muscles (Spine, Neck, Arms, Calves, etc.) */}
-              <g fill="#1e293b" stroke="#334155" strokeWidth="1" strokeLinejoin="round" strokeLinecap="round">
-                {BACK_BODY_PATHS.neutral.map((d, idx) => (
-                  <path key={`back-neutral-${idx}`} d={d} />
-                ))}
-              </g>
-
-              {/* Active Zone: Mid Back (horizontal-pull: trapezius + upper-back mid) */}
-              <g data-dimension="horizontal-pull" fill={hPullColor.fill} stroke={hPullColor.stroke}>
-                {BACK_BODY_PATHS.horizontalPull.map((d, idx) => (
-                  <path
-                    key={`h-pull-${idx}`}
-                    fill={hPullColor.fill}
-                    stroke={hPullColor.stroke}
-                    strokeWidth="1.5"
-                    strokeLinejoin="round"
-                    strokeLinecap="round"
-                    className="transition-colors duration-200"
-                    d={d}
-                  />
-                ))}
-              </g>
-
-              {/* Active Zone: Outer Back / Lats (vertical-pull: lats) */}
-              <g data-dimension="vertical-pull" fill={vPullColor.fill} stroke={vPullColor.stroke}>
-                {BACK_BODY_PATHS.verticalPull.map((d, idx) => (
-                  <path
-                    key={`v-pull-${idx}`}
-                    fill={vPullColor.fill}
-                    stroke={vPullColor.stroke}
-                    strokeWidth="1.5"
-                    strokeLinejoin="round"
-                    strokeLinecap="round"
-                    className="transition-colors duration-200"
-                    d={d}
-                  />
-                ))}
-              </g>
-
-              {/* Active Zone: Glutes & Posterior Thighs (hip-posterior-chain: gluteal + hamstring) */}
-              <g data-dimension="hip-posterior-chain" fill={hipColor.fill} stroke={hipColor.stroke}>
-                {BACK_BODY_PATHS.hipPosteriorChain.map((d, idx) => (
-                  <path
-                    key={`hip-${idx}`}
-                    fill={hipColor.fill}
-                    stroke={hipColor.stroke}
-                    strokeWidth="1.5"
-                    strokeLinejoin="round"
-                    strokeLinecap="round"
-                    className="transition-colors duration-200"
-                    d={d}
-                  />
-                ))}
-              </g>
-
-              {/* Outer boundary stroke for crisp silhouette finish */}
-              <path
-                d={BODY_OUTLINE_PATHS.back}
+                data-testid="neck-finish-back"
+                d={NECK_FINISH_PATHS.backCap}
                 fill="none"
                 stroke="#475569"
                 strokeWidth="2"
-                strokeLinejoin="round"
                 strokeLinecap="round"
               />
             </svg>

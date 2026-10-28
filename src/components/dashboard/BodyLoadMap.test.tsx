@@ -20,6 +20,7 @@ import {
   BODY_OUTLINE_PATHS,
   FRONT_BODY_PATHS,
   BACK_BODY_PATHS,
+  NECK_FINISH_PATHS,
 } from './bodyModelPaths';
 import fs from 'fs';
 
@@ -390,23 +391,47 @@ export function runBodyLoadMapTests(): { passed: boolean; details: string[] } {
   assert(mapB.includes('id="inst-B-front-title"'), 'Map B has inst-B-front-title');
   assert(!mapA.includes('inst-B'), 'Map A does not contain inst-B prefix');
 
-  // 6. Open-source High-Fidelity SVG Paths and Coordinate Space Tests
-  // 6a. Distinct Front and Back ViewBoxes preserved
+  // 6. Open-source High-Fidelity SVG Paths and Headless Diagram Tests
+  // 6a. Balanced Headless Front and Back ViewBoxes (vertically centered, shoulders & feet intact)
   assert(
-    BODY_FRONT_VIEW_BOX === '0 0 724 1448',
-    'BODY_FRONT_VIEW_BOX preserves native "0 0 724 1448"'
+    BODY_FRONT_VIEW_BOX === '0 200 724 1180',
+    'BODY_FRONT_VIEW_BOX uses headless adjusted "0 200 724 1180"'
   );
   assert(
-    BODY_BACK_VIEW_BOX === '724 0 724 1448',
-    'BODY_BACK_VIEW_BOX preserves native "724 0 724 1448"'
+    BODY_BACK_VIEW_BOX === '724 200 724 1180',
+    'BODY_BACK_VIEW_BOX uses headless adjusted "724 200 724 1180"'
   );
   assert(
-    renderedMap.includes('viewBox="0 0 724 1448"'),
-    'Rendered front SVG specifies native viewBox="0 0 724 1448"'
+    renderedMap.includes('viewBox="0 200 724 1180"'),
+    'Rendered front SVG specifies headless viewBox="0 200 724 1180"'
   );
   assert(
-    renderedMap.includes('viewBox="724 0 724 1448"'),
-    'Rendered back SVG specifies native viewBox="724 0 724 1448"'
+    renderedMap.includes('viewBox="724 200 724 1180"'),
+    'Rendered back SVG specifies headless viewBox="724 200 724 1180"'
+  );
+
+  // 6b. Intentionally headless: no head/hair paths and clean neck top cap finish
+  assert(
+    !renderedMap.includes('data-dimension="head"') && !renderedMap.includes('head-'),
+    'No head dimension or head path added'
+  );
+  assert(
+    !renderedMap.includes('hair'),
+    'No hair paths added'
+  );
+  assert(
+    renderedMap.includes('id="test-map-neck-clip-front"') &&
+    renderedMap.includes('id="test-map-neck-clip-back"'),
+    'Unique clipPath definitions exist for front and back neck clipping'
+  );
+  assert(
+    renderedMap.includes('data-testid="neck-finish-front"') &&
+    renderedMap.includes('data-testid="neck-finish-back"'),
+    'Neck top finish curved caps are rendered for front and back'
+  );
+  assert(
+    NECK_FINISH_PATHS.frontCap.includes('236') && NECK_FINISH_PATHS.backCap.includes('236'),
+    'Neck finish curve heights start symmetrically at Y = 236 for front and back'
   );
 
   // 6b. Continuous body outline paths preserved from SvgMaleWrapper
