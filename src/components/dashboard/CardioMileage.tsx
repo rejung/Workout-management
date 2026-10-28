@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { Compass, ChevronRight, BarChart2, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { Compass, ChevronRight, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import { RecommendationResult } from '../../utils/workoutEngine';
 import { formatNextRecommendationDate } from '../../utils/dateUtils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -29,9 +29,7 @@ export function RecommendedWorkoutCard({
   const isRest = recommendation.mainLift === '휴식' || !recommendation.mainLift;
 
   // Accordion state
-  const [showScores, setShowScores] = useState(false);
   const [showReasons, setShowReasons] = useState(false);
-  const [showTopCandidates, setShowTopCandidates] = useState(false);
 
   const handleStart = () => {
     if (isRest) return;
@@ -83,7 +81,7 @@ export function RecommendedWorkoutCard({
         >
           <div className="flex items-center gap-2">
             <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-            <span>추천 이유</span>
+            <span>추천 근거 · 신체 부하 보기</span>
           </div>
           {showReasons ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
@@ -116,159 +114,64 @@ export function RecommendedWorkoutCard({
     );
   };
 
-  const renderScoresAccordion = () => {
+  // Top candidates filtering: Only preferred or viable statusType, never defaulting missing statusType
+  const rawCandidates = recommendation.topCandidates;
+  const viableCandidates = Array.isArray(rawCandidates)
+    ? rawCandidates.filter(
+        (candidate) => candidate.statusType === 'preferred' || candidate.statusType === 'viable'
+      )
+    : undefined;
+
+  const renderViableCandidatesSection = () => {
     return (
-      <div className="space-y-3">
-        <button
-          type="button"
-          onClick={() => setShowScores(!showScores)}
-          className="w-full flex items-center justify-between py-2.5 px-3.5 bg-slate-950/40 hover:bg-slate-950/70 border border-slate-800/80 rounded-xl text-xs text-slate-400 hover:text-white transition-all cursor-pointer font-bold"
-        >
-          <div className="flex items-center gap-2">
-            <BarChart2 className="w-3.5 h-3.5 text-indigo-400" />
-            <span>평가 기준</span>
+      <div className="space-y-2.5">
+        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400">
+          <Compass className="w-3.5 h-3.5 text-emerald-400" />
+          <span>수행 가능한 훈련</span>
+        </div>
+
+        {!Array.isArray(rawCandidates) ? (
+          <div className="bg-slate-950/40 border border-slate-850/60 rounded-xl p-3 text-xs text-slate-400 font-medium">
+            후보 정보를 확인할 수 없습니다
           </div>
-          {showScores ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-        </button>
-
-        <AnimatePresence>
-          {showScores && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.25 }}
-              className="overflow-hidden space-y-4 pt-1"
-            >
-              <div className="bg-slate-950/80 border border-slate-850 rounded-xl p-4 space-y-3">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                  VNext 다차원 추천 평가 체계
-                </span>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <div className="bg-slate-900/60 border border-slate-800/60 p-3 rounded-xl space-y-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                      <span className="text-xs font-bold text-slate-200">훈련 준비도</span>
+        ) : viableCandidates && viableCandidates.length === 0 ? (
+          <div className="bg-slate-950/40 border border-slate-850/60 rounded-xl p-3 text-xs text-slate-400 font-medium">
+            현재 수행 가능한 후보가 없습니다
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {viableCandidates?.map((candidate) => {
+              const isOptimal = Boolean(candidate.isCurrent);
+              return (
+                <div 
+                  key={candidate.lift} 
+                  className={`p-3 rounded-xl border transition-all duration-200 ${
+                    isOptimal 
+                      ? 'bg-emerald-950/15 border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.06)]' 
+                      : 'bg-slate-950/40 border-slate-850/60'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-black ${isOptimal ? 'text-emerald-400' : 'text-slate-200'}`}>
+                        {candidate.lift}
+                      </span>
+                      {isOptimal ? (
+                        <span className="text-[9px] border px-1.5 py-0.5 rounded-md font-bold tracking-tight bg-emerald-500/15 text-emerald-400 border-emerald-500/35">
+                          최적 추천
+                        </span>
+                      ) : (
+                        <span className="text-[9px] border px-1.5 py-0.5 rounded-md font-bold tracking-tight bg-indigo-500/15 text-indigo-300 border-indigo-500/30">
+                          {candidate.statusLabel || '수행 가능'}
+                        </span>
+                      )}
                     </div>
-                    <p className="text-[11px] text-slate-400 font-medium leading-relaxed pl-3">
-                      최근 부하와 필요한 움직임 영역의 중첩
-                    </p>
-                  </div>
-
-                  <div className="bg-slate-900/60 border border-slate-800/60 p-3 rounded-xl space-y-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
-                      <span className="text-xs font-bold text-slate-200">훈련 필요도</span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 font-medium leading-relaxed pl-3">
-                      최근 수행 간격과 훈련 이력
-                    </p>
-                  </div>
-
-                  <div className="bg-slate-900/60 border border-slate-800/60 p-3 rounded-xl space-y-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                      <span className="text-xs font-bold text-slate-200">발전 기회</span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 font-medium leading-relaxed pl-3">
-                      최근 기록에서 다음 훈련 자극 기회
-                    </p>
-                  </div>
-
-                  <div className="bg-slate-900/60 border border-slate-800/60 p-3 rounded-xl space-y-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
-                      <span className="text-xs font-bold text-slate-200">훈련 맥락</span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 font-medium leading-relaxed pl-3">
-                      최근 빈도와 복합 부하
-                    </p>
                   </div>
                 </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    );
-  };
-
-  const renderCandidatesAccordion = () => {
-    if (!recommendation.topCandidates || recommendation.topCandidates.length === 0) return null;
-    return (
-      <div className="space-y-3">
-        <button
-          type="button"
-          onClick={() => setShowTopCandidates(!showTopCandidates)}
-          className="w-full flex items-center justify-between py-2.5 px-3.5 bg-slate-950/40 hover:bg-slate-950/70 border border-slate-800/80 rounded-xl text-xs text-slate-400 hover:text-white transition-all cursor-pointer font-bold"
-        >
-          <div className="flex items-center gap-2">
-            <Compass className="w-3.5 h-3.5 text-emerald-400" />
-            <span>후보 운동</span>
+              );
+            })}
           </div>
-          {showTopCandidates ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-        </button>
-
-        <AnimatePresence>
-          {showTopCandidates && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.25 }}
-              className="overflow-hidden space-y-2 pt-1"
-            >
-              {recommendation.topCandidates.map((candidate) => {
-                const isSelected = !isRest && (candidate.isCurrent || candidate.lift === recommendation.mainLift || recommendation.mainLift.includes(candidate.lift));
-                const statusLabel = candidate.statusLabel || (isSelected ? '최적 추천' : '수행 가능');
-                const statusType = candidate.statusType || (isSelected ? 'preferred' : 'viable');
-
-                let badgeClass = 'bg-slate-800/80 text-slate-400 border-slate-700/50';
-                if (statusType === 'preferred' || isSelected) {
-                  badgeClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/35';
-                } else if (statusType === 'viable') {
-                  badgeClass = 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30';
-                } else if (statusType === 'caution') {
-                  badgeClass = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
-                } else if (statusType === 'recent') {
-                  badgeClass = 'bg-slate-800/80 text-slate-400 border-slate-700/50';
-                } else if (statusType === 'deferred') {
-                  badgeClass = 'bg-slate-800/60 text-slate-500 border-slate-700/40';
-                }
-
-                return (
-                  <div 
-                    key={candidate.lift} 
-                    className={`p-3 rounded-xl border transition-all duration-200 ${
-                      isSelected 
-                        ? 'bg-emerald-950/15 border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.06)]' 
-                        : 'bg-slate-950/40 border-slate-850/60 hover:border-slate-800'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs font-black ${isSelected ? 'text-emerald-400' : 'text-slate-200'}`}>
-                          {candidate.lift}
-                        </span>
-                        <span className={`text-[9px] border px-1.5 py-0.5 rounded-md font-bold tracking-tight ${badgeClass}`}>
-                          {statusLabel}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* 선택되지 않은 사유 한 줄 추가 */}
-                    {!isSelected && candidate.rejectionReason && (
-                      <div className="text-[10px] text-slate-400 font-medium mt-1.5 pl-2.5 border-l-2 border-slate-800 flex items-start gap-1">
-                        <span>{candidate.rejectionReason}</span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        )}
       </div>
     );
   };
@@ -341,18 +244,16 @@ export function RecommendedWorkoutCard({
           </div>
         )}
 
-        {/* Accordion Ordering: Rest: [추천 이유 -> 평가 기준 -> 후보 운동] / Train: [후보 운동 -> 추천 이유 -> 평가 기준] */}
+        {/* Section Ordering: Rest: [추천 근거 · 신체 부하 보기 -> 수행 가능한 훈련] / Train: [수행 가능한 훈련 -> 추천 근거 · 신체 부하 보기] */}
         {isRest ? (
           <>
             {renderReasonsAccordion()}
-            {renderScoresAccordion()}
-            {renderCandidatesAccordion()}
+            {renderViableCandidatesSection()}
           </>
         ) : (
           <>
-            {renderCandidatesAccordion()}
+            {renderViableCandidatesSection()}
             {renderReasonsAccordion()}
-            {renderScoresAccordion()}
           </>
         )}
       </div>
