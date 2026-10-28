@@ -3,11 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from 'react';
+import { useState, useId } from 'react';
 import { Compass, ChevronRight, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import { RecommendationResult } from '../../utils/workoutEngine';
 import { formatNextRecommendationDate } from '../../utils/dateUtils';
 import { motion, AnimatePresence } from 'motion/react';
+import { BodyLoadMap } from './BodyLoadMap';
 
 interface RecommendedWorkoutCardProps {
   nextRecommendation?: RecommendationResult;
@@ -69,15 +70,25 @@ export function RecommendedWorkoutCard({
 
   const actionTags = recommendation.representativeExercises || (isRest ? ['충분한 수면', '가벼운 산책', '동적 스트레칭', '수분 섭취'] : ['주동근', '코어']);
 
+  // Unique id for accessibility linking
+  const accordionContentId = useId();
+
+  const hasReasons = Boolean(recommendation.reasons && recommendation.reasons.length > 0);
+  const hasBodyLoad = Boolean(recommendation.bodyLoad);
+
   // Accordion Renderers
   const renderReasonsAccordion = () => {
-    if (!recommendation.reasons || recommendation.reasons.length === 0) return null;
+    // Show accordion if either reasons or bodyLoad exists
+    if (!hasReasons && !hasBodyLoad) return null;
+
     return (
       <div className="space-y-3">
         <button
           type="button"
+          aria-expanded={showReasons}
+          aria-controls={accordionContentId}
           onClick={() => setShowReasons(!showReasons)}
-          className="w-full flex items-center justify-between py-2.5 px-3.5 bg-slate-950/40 hover:bg-slate-950/70 border border-slate-800/80 rounded-xl text-xs text-slate-400 hover:text-white transition-all cursor-pointer font-bold"
+          className="w-full flex items-center justify-between py-2.5 px-3.5 bg-slate-950/40 hover:bg-slate-950/70 border border-slate-800/80 rounded-xl text-xs text-slate-400 hover:text-white transition-all cursor-pointer font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
         >
           <div className="flex items-center gap-2">
             <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
@@ -88,24 +99,35 @@ export function RecommendedWorkoutCard({
         <AnimatePresence>
           {showReasons && (
             <motion.div
+              id={accordionContentId}
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.25 }}
               className="overflow-hidden"
             >
-              <div className="bg-slate-950/60 border border-slate-800/60 rounded-xl p-3.5 space-y-2">
-                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
-                  {isRest ? '휴식 결정 사유' : '분석 기반 추천 사유'}
-                </span>
-                <div className="space-y-1.5">
-                  {recommendation.reasons.map((reason, idx) => (
-                    <div key={idx} className="text-xs text-slate-300 flex items-start gap-2 font-medium">
-                      <span className="text-emerald-400 font-bold shrink-0 mt-0.5">•</span>
-                      <span>{reason.replace(/^✓\s*/, '')}</span>
+              <div className="bg-slate-950/60 border border-slate-800/60 rounded-xl p-3.5 space-y-4">
+                {/* ① 신체 부하 맵 시각화 */}
+                {hasBodyLoad && (
+                  <BodyLoadMap bodyLoad={recommendation.bodyLoad} idPrefix="cardio-rec" />
+                )}
+
+                {/* ② 분석 기반 추천 사유 / 휴식 결정 사유 */}
+                {hasReasons && (
+                  <div className={`space-y-2 ${hasBodyLoad ? 'pt-3 border-t border-slate-800/60' : ''}`}>
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
+                      {isRest ? '휴식 결정 사유' : '분석 기반 추천 사유'}
+                    </span>
+                    <div className="space-y-1.5">
+                      {recommendation.reasons?.map((reason, idx) => (
+                        <div key={idx} className="text-xs text-slate-300 flex items-start gap-2 font-medium">
+                          <span className="text-emerald-400 font-bold shrink-0 mt-0.5">•</span>
+                          <span>{reason.replace(/^✓\s*/, '')}</span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                )}
               </div>
             </motion.div>
           )}
@@ -244,18 +266,9 @@ export function RecommendedWorkoutCard({
           </div>
         )}
 
-        {/* Section Ordering: Rest: [추천 근거 · 신체 부하 보기 -> 수행 가능한 훈련] / Train: [수행 가능한 훈련 -> 추천 근거 · 신체 부하 보기] */}
-        {isRest ? (
-          <>
-            {renderReasonsAccordion()}
-            {renderViableCandidatesSection()}
-          </>
-        ) : (
-          <>
-            {renderViableCandidatesSection()}
-            {renderReasonsAccordion()}
-          </>
-        )}
+        {/* Section Ordering: Unified [수행 가능한 훈련 -> 추천 근거 · 신체 부하 보기] */}
+        {renderViableCandidatesSection()}
+        {renderReasonsAccordion()}
       </div>
 
       {/* 6. CTA Button (Aligned to bottom right for Train state only) */}
