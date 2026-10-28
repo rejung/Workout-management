@@ -430,6 +430,143 @@ export function runBodyLoadPresentationMapperTests(): { passed: boolean; details
     'prodResult.presentation.bodyLoad has 7 dimensions'
   );
 
+  // 11. Summary logic verification (Requirement-specific tests)
+  // 11a. Reproduction case 1: mapBodyLoadPresentation(undefined)
+  const missingSummaryRes = mapBodyLoadPresentation(undefined);
+  assert(
+    missingSummaryRes.summary === '신체 부하를 판단할 기록이 부족합니다',
+    'mapBodyLoadPresentation(undefined) gives "신체 부하를 판단할 기록이 부족합니다"'
+  );
+  assert(
+    !missingSummaryRes.summary.includes('누적 부하가 낮습니다'),
+    'mapBodyLoadPresentation(undefined) does not claim low load'
+  );
+
+  // 11b. Reproduction case 2: evaluateVNextProduction([]) with empty logs
+  const emptyLogsProdResult = evaluateVNextProduction([], {
+    evaluationInstant: '2026-08-20T12:00:00+09:00',
+    calendarDate: '2026-08-20',
+    timezone: 'Asia/Seoul',
+  });
+  assert(
+    emptyLogsProdResult.presentation.bodyLoad?.summary === '신체 부하를 판단할 기록이 부족합니다',
+    'evaluateVNextProduction([]) gives "신체 부하를 판단할 기록이 부족합니다"'
+  );
+  assert(
+    !emptyLogsProdResult.presentation.bodyLoad?.summary?.includes('누적 부하가 낮습니다'),
+    'evaluateVNextProduction([]) does not claim low load'
+  );
+
+  // 11c. All 7 dimensions historical-only
+  const allHistoricalStates: AllDimensionResidualStates = {} as any;
+  for (const dim of CANONICAL_STRESS_DIMENSIONS) {
+    (allHistoricalStates as any)[dim] = createMockDimensionState({
+      dimension: dim,
+      historicalCount: 1,
+      potential: 'historical',
+    });
+  }
+  const allHistoricalRes = mapBodyLoadPresentation(allHistoricalStates);
+  assert(
+    allHistoricalRes.summary === '기록상 최근·잔여 부하 근거가 없습니다',
+    'All historical states produce "기록상 최근·잔여 부하 근거가 없습니다"'
+  );
+  assert(
+    !allHistoricalRes.summary.includes('완전 회복') && !allHistoricalRes.summary.includes('낮음'),
+    'All historical states do not claim complete recovery or low load'
+  );
+
+  // 11d. No active load, but partial dimensions insufficient (e.g. 2 historical, 5 insufficient)
+  const partialStates: AllDimensionResidualStates = {} as any;
+  for (let i = 0; i < CANONICAL_STRESS_DIMENSIONS.length; i++) {
+    const dim = CANONICAL_STRESS_DIMENSIONS[i];
+    if (i < 2) {
+      (partialStates as any)[dim] = createMockDimensionState({
+        dimension: dim,
+        historicalCount: 1,
+        potential: 'historical',
+      });
+    } else {
+      (partialStates as any)[dim] = createMockDimensionState({
+        dimension: dim,
+      });
+    }
+  }
+  const partialRes = mapBodyLoadPresentation(partialStates);
+  assert(
+    partialRes.summary ===
+      '확인 가능한 영역에서 최근·잔여 부하 근거가 없습니다. 일부 영역은 판단 정보가 부족합니다',
+    'Partial insufficient states produce exact requirement 3 summary'
+  );
+
+  // 11e. Active load with partial insufficient
+  const activeMixedStates: AllDimensionResidualStates = {} as any;
+  for (let i = 0; i < CANONICAL_STRESS_DIMENSIONS.length; i++) {
+    const dim = CANONICAL_STRESS_DIMENSIONS[i];
+    if (i === 0) {
+      (activeMixedStates as any)[dim] = createMockDimensionState({
+        dimension: dim,
+        immediateCount: 1,
+      });
+    } else {
+      (activeMixedStates as any)[dim] = createMockDimensionState({
+        dimension: dim,
+      });
+    }
+  }
+  const activeMixedRes = mapBodyLoadPresentation(activeMixedStates);
+  assert(
+    activeMixedRes.summary === '최근 직접 부하 1개 영역 감지. 일부 영역은 판단 정보가 부족합니다',
+    'Active load with insufficient dimensions appends ". 일부 영역은 판단 정보가 부족합니다"'
+  );
+
+  // 11f. Uncertainty guidance in summary
+  // Excluded session count
+  const excludedSummaryRes = mapBodyLoadPresentation(mockAllStates, 3);
+  assert(
+    excludedSummaryRes.summary === '신체 부하를 판단할 기록이 부족합니다 (당일 시간 미지정 기록 3건 제외)',
+    'Summary appends excluded session count guidance'
+  );
+
+  // Bracket trace uncertainty
+  const bracketStateOnly: AllDimensionResidualStates = {} as any;
+  for (let i = 0; i < CANONICAL_STRESS_DIMENSIONS.length; i++) {
+    const dim = CANONICAL_STRESS_DIMENSIONS[i];
+    if (i === 0) {
+      (bracketStateOnly as any)[dim] = createMockDimensionState({
+        dimension: dim,
+        bracketCount: 1,
+        potential: 'residual',
+      });
+    } else {
+      (bracketStateOnly as any)[dim] = createMockDimensionState({ dimension: dim });
+    }
+  }
+  const bracketSummaryRes = mapBodyLoadPresentation(bracketStateOnly);
+  assert(
+    bracketSummaryRes.summary.includes('(경계 시점(24h/72h) 불확실성 포함)'),
+    'Summary appends bracket uncertainty guidance'
+  );
+
+  // Uncomputed trace uncertainty
+  const uncomputedStateOnly: AllDimensionResidualStates = {} as any;
+  for (let i = 0; i < CANONICAL_STRESS_DIMENSIONS.length; i++) {
+    const dim = CANONICAL_STRESS_DIMENSIONS[i];
+    if (i === 0) {
+      (uncomputedStateOnly as any)[dim] = createMockDimensionState({
+        dimension: dim,
+        uncertainCount: 1,
+      });
+    } else {
+      (uncomputedStateOnly as any)[dim] = createMockDimensionState({ dimension: dim });
+    }
+  }
+  const uncomputedSummaryRes = mapBodyLoadPresentation(uncomputedStateOnly);
+  assert(
+    uncomputedSummaryRes.summary.includes('(시간 미지정 기록으로 인한 불확실성 포함)'),
+    'Summary appends uncomputed trace guidance'
+  );
+
   return { passed: allPassed, details };
 }
 

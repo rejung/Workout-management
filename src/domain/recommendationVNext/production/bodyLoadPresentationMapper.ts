@@ -166,16 +166,51 @@ export function mapBodyLoadPresentation(
 
   const immediateCount = dimensionPresentations.filter((d) => d.isImmediate).length;
   const residualCount = dimensionPresentations.filter((d) => d.isResidual).length;
+  const insufficientCount = dimensionPresentations.filter((d) => d.isInsufficient).length;
+  const totalDimensions = dimensionPresentations.length;
 
   let summary = '';
-  if (immediateCount > 0 && residualCount > 0) {
-    summary = `최근 직접 부하 ${immediateCount}개 영역, 잔여 부하 ${residualCount}개 영역 감지`;
-  } else if (immediateCount > 0) {
-    summary = `최근 직접 부하 ${immediateCount}개 영역 감지`;
-  } else if (residualCount > 0) {
-    summary = `잔여 부하 ${residualCount}개 영역 감지`;
+  if (immediateCount === 0 && residualCount === 0) {
+    if (insufficientCount === totalDimensions) {
+      // 2. All dimensions insufficient
+      summary = '신체 부하를 판단할 기록이 부족합니다';
+    } else if (insufficientCount > 0) {
+      // 3. No active load, but some dimensions insufficient
+      summary =
+        '확인 가능한 영역에서 최근·잔여 부하 근거가 없습니다. 일부 영역은 판단 정보가 부족합니다';
+    } else {
+      // 4. All dimensions historical-only
+      summary = '기록상 최근·잔여 부하 근거가 없습니다';
+    }
   } else {
-    summary = '최근 72시간 내 주요 관절 및 부위의 누적 부하가 낮습니다.';
+    // 5. Active load present
+    if (immediateCount > 0 && residualCount > 0) {
+      summary = `최근 직접 부하 ${immediateCount}개 영역, 잔여 부하 ${residualCount}개 영역 감지`;
+    } else if (immediateCount > 0) {
+      summary = `최근 직접 부하 ${immediateCount}개 영역 감지`;
+    } else {
+      summary = `잔여 부하 ${residualCount}개 영역 감지`;
+    }
+
+    if (insufficientCount > 0) {
+      summary += '. 일부 영역은 판단 정보가 부족합니다';
+    }
+  }
+
+  // 6. Append uncertainty guidance if traces have bracket/uncomputed uncertainty or excluded sessions
+  const hasBracketAcrossDimensions = dimensionPresentations.some(
+    (d) => d.uncertainty.hasBracketTraces
+  );
+  const hasUncertainTracesAcrossDimensions = dimensionPresentations.some(
+    (d) => d.uncertainty.hasUncertainTraces
+  );
+
+  if (hasUncertainTracesAcrossDimensions && hasBracketAcrossDimensions) {
+    summary += ' (시간 미지정 및 경계 시점 불확실성 포함)';
+  } else if (hasUncertainTracesAcrossDimensions) {
+    summary += ' (시간 미지정 기록으로 인한 불확실성 포함)';
+  } else if (hasBracketAcrossDimensions) {
+    summary += ' (경계 시점(24h/72h) 불확실성 포함)';
   }
 
   if (safeCount > 0) {
