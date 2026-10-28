@@ -13,11 +13,13 @@ import { BodyLoadMap } from './BodyLoadMap';
 interface RecommendedWorkoutCardProps {
   nextRecommendation?: RecommendationResult;
   onStartWorkout?: (routineId: string) => void;
+  defaultExpanded?: boolean;
 }
 
 export function RecommendedWorkoutCard({ 
   nextRecommendation: propNextRecommendation,
-  onStartWorkout 
+  onStartWorkout,
+  defaultExpanded = false,
 }: RecommendedWorkoutCardProps) {
   const defaultRecommendation: RecommendationResult = {
     mainLift: '휴식',
@@ -30,7 +32,7 @@ export function RecommendedWorkoutCard({
   const isRest = recommendation.mainLift === '휴식' || !recommendation.mainLift;
 
   // Accordion state
-  const [showReasons, setShowReasons] = useState(false);
+  const [showReasons, setShowReasons] = useState(defaultExpanded);
 
   const handleStart = () => {
     if (isRest) return;
@@ -73,13 +75,16 @@ export function RecommendedWorkoutCard({
   // Unique id for accessibility linking
   const accordionContentId = useId();
 
-  const hasReasons = Boolean(recommendation.reasons && recommendation.reasons.length > 0);
+  // Reasons are only visible for workout recommendations (Train state), hidden for Rest
+  const hasVisibleReasons = !isRest && Boolean(recommendation.reasons && recommendation.reasons.length > 0);
   const hasBodyLoad = Boolean(recommendation.bodyLoad);
+
+  // Accordion should only render if there is actually visible content (visible reasons or bodyLoad)
+  const shouldShowAccordion = hasVisibleReasons || hasBodyLoad;
 
   // Accordion Renderers
   const renderReasonsAccordion = () => {
-    // Show accordion if either reasons or bodyLoad exists
-    if (!hasReasons && !hasBodyLoad) return null;
+    if (!shouldShowAccordion) return null;
 
     return (
       <div className="space-y-3">
@@ -109,14 +114,14 @@ export function RecommendedWorkoutCard({
               <div className="bg-slate-950/60 border border-slate-800/60 rounded-xl p-3.5 space-y-4">
                 {/* ① 신체 부하 맵 시각화 */}
                 {hasBodyLoad && (
-                  <BodyLoadMap bodyLoad={recommendation.bodyLoad} idPrefix="cardio-rec" />
+                  <BodyLoadMap bodyLoad={recommendation.bodyLoad} idPrefix={accordionContentId} />
                 )}
 
-                {/* ② 분석 기반 추천 사유 / 휴식 결정 사유 */}
-                {hasReasons && (
+                {/* ② 분석 기반 추천 사유: 운동 추천일 때만 표시 (!isRest) */}
+                {hasVisibleReasons && (
                   <div className={`space-y-2 ${hasBodyLoad ? 'pt-3 border-t border-slate-800/60' : ''}`}>
                     <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
-                      {isRest ? '휴식 결정 사유' : '분석 기반 추천 사유'}
+                      분석 기반 추천 사유
                     </span>
                     <div className="space-y-1.5">
                       {recommendation.reasons?.map((reason, idx) => (

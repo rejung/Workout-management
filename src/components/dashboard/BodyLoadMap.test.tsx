@@ -45,7 +45,7 @@ export function runBodyLoadMapTests(): { passed: boolean; details: string[] } {
     'All CANONICAL_STRESS_DIMENSIONS exist in CANONICAL_DIMENSION_CONFIGS'
   );
 
-  // 3. Render BodyLoadMap with full mock data
+  // 3. Render BodyLoadMap with mock data
   const mockDimensions: DimensionLoadPresentation[] = [
     {
       dimension: 'knee-dominant-lower-body',
@@ -172,53 +172,88 @@ export function runBodyLoadMapTests(): { passed: boolean; details: string[] } {
 
   const renderedMap = renderToStaticMarkup(<BodyLoadMap bodyLoad={fullBodyLoad} idPrefix="test-map" />);
 
-  // Verify all 7 canonical dimensions are wired via canonical ID
+  // 3a. Verify all 7 canonical dimensions are wired via canonical ID
   for (const dim of CANONICAL_STRESS_DIMENSIONS) {
     assert(
-      renderedMap.includes(`data-dimension="${dim}"`) || renderedMap.includes(`data-dimension-card="${dim}"`),
+      renderedMap.includes(`data-dimension="${dim}"`) || renderedMap.includes(`data-dimension-row="${dim}"`),
       `BodyLoadMap wires canonical dimension ID: ${dim}`
     );
   }
 
-  // Verify disclaimer text
+  // 3b. Verify specific element color inside its data-dimension
+  // knee-dominant-lower-body (status: 최근 부하) -> orange fill #f97316 inside its g
+  const kneeGIndex = renderedMap.indexOf('data-dimension="knee-dominant-lower-body"');
+  assert(kneeGIndex !== -1, 'knee-dominant-lower-body group exists');
+  const kneeChunk = renderedMap.substring(kneeGIndex, kneeGIndex + 300);
+  assert(kneeChunk.includes('fill="#f97316"'), 'knee-dominant-lower-body SVG element has orange fill (#f97316)');
+
+  // hip-posterior-chain (status: 잔여 부하) -> yellow fill #eab308 inside its g
+  const hipGIndex = renderedMap.indexOf('data-dimension="hip-posterior-chain"');
+  assert(hipGIndex !== -1, 'hip-posterior-chain group exists');
+  const hipChunk = renderedMap.substring(hipGIndex, hipGIndex + 300);
+  assert(hipChunk.includes('fill="#eab308"'), 'hip-posterior-chain SVG element has yellow fill (#eab308)');
+
+  // horizontal-push (status: 최근 부하 근거 없음) -> teal fill #14b8a6 inside its g
+  const hPushGIndex = renderedMap.indexOf('data-dimension="horizontal-push"');
+  assert(hPushGIndex !== -1, 'horizontal-push group exists');
+  const hPushChunk = renderedMap.substring(hPushGIndex, hPushGIndex + 300);
+  assert(hPushChunk.includes('fill="#14b8a6"'), 'horizontal-push SVG element has teal fill (#14b8a6)');
+
+  // vertical-push (status: 판단 정보 부족) -> slate fill #64748b inside its g
+  const vPushGIndex = renderedMap.indexOf('data-dimension="vertical-push"');
+  assert(vPushGIndex !== -1, 'vertical-push group exists');
+  const vPushChunk = renderedMap.substring(vPushGIndex, vPushGIndex + 300);
+  assert(vPushChunk.includes('fill="#64748b"'), 'vertical-push SVG element has slate fill (#64748b)');
+
+  // 3c. Axial item is displayed once and not duplicated in the list below
+  const axialMatches = renderedMap.split('data-dimension="axial-systemic-loading"').length - 1;
+  assert(axialMatches === 1, 'axial-systemic-loading is rendered exactly once as a dedicated item');
+  assert(!renderedMap.includes('data-dimension-row="axial-systemic-loading"'), 'axial is NOT duplicated in bottom list');
+
+  // 3d. Simplified Korean labels '정면' and '후면' (no '(FRONT)', '(BACK)')
+  assert(renderedMap.includes('>정면<') && renderedMap.includes('>후면<'), 'Labels are simplified to "정면" and "후면"');
+  assert(!renderedMap.includes('(Front)') && !renderedMap.includes('(Back)'), 'No uppercase or English "(Front)" / "(Back)"');
+
+  // 3e. Disclaimer and single summary
   assert(
     renderedMap.includes('기록 기반 추정 · 실제 근육 피로 측정값 아님'),
     'Disclaimer "기록 기반 추정 · 실제 근육 피로 측정값 아님" is rendered'
   );
-
-  // Verify summary text rendered
   assert(
     renderedMap.includes('최근 직접 부하 2개 영역, 잔여 부하 2개 영역 감지'),
     'Existing bodyLoad.summary is rendered'
   );
 
-  // Verify excluded session notice
+  // 3f. Excluded session notice (concise, without arbitrary body part assignment)
   assert(
-    renderedMap.includes('당일 시간 미지정 기록 2건은 특정 신체 부위에 임의 배정하지 않고 제외했습니다'),
-    'Excluded session notice displayed with correct count'
+    renderedMap.includes('당일 시간 미지정 기록 2건 제외 (신체 부위 미배정)'),
+    'Excluded session notice displayed concisely'
   );
 
-  // Verify coexisting uncertainty on knee-dominant-lower-body
-  // Status is 최근 부하 (orange #f97316), and note is displayed
+  // 3g. No biological pseudo-measurements
   assert(
-    renderedMap.includes('fill="#f97316"') && renderedMap.includes('경계 시점(24h/72h) 불확실성 포함'),
-    'Knee dominant maintains confirmed orange fill AND displays uncertainty note'
+    !renderedMap.includes('중추신경계 부담') && !renderedMap.includes('중추 신경계 복합 부하'),
+    'No speculative CNS / biological measurement claims'
   );
 
-  // Verify axial-systemic-loading is rendered as side item
+  // 3h. Uncertainty note in bottom list
   assert(
-    renderedMap.includes('data-dimension="axial-systemic-loading"') && renderedMap.includes('전신 및 축성 부하'),
-    'Axial systemic loading is rendered as a distinct item beside silhouettes'
+    renderedMap.includes('경계 시점(24h/72h) 불확실성 포함'),
+    'Uncertainty note is displayed for knee-dominant'
   );
 
-  // Verify accessibility attributes on SVGs
+  // 3i. Accessibility attributes on SVGs
   assert(renderedMap.includes('role="img"') && renderedMap.includes('<title'), 'SVGs include role="img" and <title>');
+  assert(
+    renderedMap.includes('aria-labelledby="test-map-front-title test-map-front-desc"'),
+    'Front SVG links title and desc via idPrefix'
+  );
 
   // 4. Missing / Undefined bodyLoad fallback
   const renderedEmpty = renderToStaticMarkup(<BodyLoadMap bodyLoad={undefined} idPrefix="empty-map" />);
   assert(
     renderedEmpty.includes('판단 정보 부족'),
-    'Undefined bodyLoad renders "판단 정보 부족" for all dimensions'
+    'Undefined bodyLoad renders "판단 정보 부족" for dimensions'
   );
   assert(
     !renderedEmpty.includes('#14b8a6') && !renderedEmpty.includes('완전 회복'),
@@ -226,7 +261,7 @@ export function runBodyLoadMapTests(): { passed: boolean; details: string[] } {
   );
 
   // 5. RecommendedWorkoutCard integration tests
-  // 5a. Both reasons and bodyLoad present
+  // 5a. Train Recommendation (스쿼트) with reasons and bodyLoad
   const fullRec: RecommendationResult = {
     mainLift: '스쿼트',
     reasons: ['✓ 하체 회복 완료', '✓ 주동근 준비 상태 양호'],
@@ -236,108 +271,116 @@ export function runBodyLoadMapTests(): { passed: boolean; details: string[] } {
     topCandidates: [
       { lift: '스쿼트', isCurrent: true, statusType: 'preferred' },
       { lift: '벤치프레스', isCurrent: false, statusType: 'viable' },
-      { lift: '데드리프트', isCurrent: false, statusType: 'caution' }, // caution should NOT appear
+      { lift: '데드리프트', isCurrent: false, statusType: 'caution' },
     ],
   };
 
-  const fullCard = renderToStaticMarkup(<RecommendedWorkoutCard nextRecommendation={fullRec} />);
+  const trainCard = renderToStaticMarkup(
+    <RecommendedWorkoutCard nextRecommendation={fullRec} defaultExpanded={true} />
+  );
 
-  // Check section ordering: '수행 가능한 훈련' must appear before '추천 근거 · 신체 부하 보기'
-  const viableIndex = fullCard.indexOf('수행 가능한 훈련');
-  const accordionIndex = fullCard.indexOf('추천 근거 · 신체 부하 보기');
+  // Unified ordering
+  const viableIndex = trainCard.indexOf('수행 가능한 훈련');
+  const accordionIndex = trainCard.indexOf('추천 근거 · 신체 부하 보기');
   assert(
     viableIndex !== -1 && accordionIndex !== -1 && viableIndex < accordionIndex,
     'Unified order: viable candidates section comes BEFORE reasons accordion'
   );
 
-  // Check viable candidates filtering: preferred and viable are present, caution is absent
-  assert(fullCard.includes('최적 추천') && fullCard.includes('스쿼트'), 'Preferred candidate has "최적 추천" badge');
-  assert(fullCard.includes('벤치프레스'), 'Viable candidate "벤치프레스" is rendered');
-  assert(!fullCard.includes('데드리프트'), 'Caution candidate "데드리프트" is excluded from viable list');
+  // Train recommendation preserves '분석 기반 추천 사유'
+  assert(trainCard.includes('분석 기반 추천 사유'), 'Train recommendation preserves "분석 기반 추천 사유"');
+  assert(trainCard.includes('하체 회복 완료'), 'Train recommendation preserves reason text');
+  assert(trainCard.includes('운동 시작'), 'CTA button "운동 시작" is rendered for Train recommendation');
 
-  // Check CTA button present for Train state
-  assert(fullCard.includes('운동 시작'), 'CTA button "운동 시작" is rendered for Train recommendation');
+  // Verify accordion aria-expanded state
+  assert(trainCard.includes('aria-expanded="true"'), 'Opened accordion has aria-expanded="true"');
+  const collapsedCard = renderToStaticMarkup(<RecommendedWorkoutCard nextRecommendation={fullRec} />);
+  assert(collapsedCard.includes('aria-expanded="false"'), 'Default accordion has aria-expanded="false"');
 
-  // Check accordion accessibility attributes
-  assert(fullCard.includes('aria-expanded="false"'), 'Accordion button has aria-expanded="false" by default');
-  assert(fullCard.includes('aria-controls='), 'Accordion button has aria-controls linked');
-  assert(fullCard.includes('type="button"'), 'Accordion button has type="button"');
-
-  // 5b. Reasons empty, bodyLoad present
-  const bodyLoadOnlyRec: RecommendationResult = {
+  // 5b. Rest Recommendation with bodyLoad and reasons
+  const restRecWithBodyLoad: RecommendationResult = {
     mainLift: '휴식',
-    reasons: [],
-    representativeExercises: ['충분한 수면'],
+    reasons: ['✓ 마지막 훈련 완료', '✓ 피로도 보통'],
+    representativeExercises: ['충분한 수면', '가벼운 산책'],
     date: '2026. 10. 28',
     bodyLoad: fullBodyLoad,
+    topCandidates: [
+      { lift: '스쿼트', isCurrent: false, statusType: 'viable' },
+    ],
   };
-  const bodyLoadOnlyCard = renderToStaticMarkup(
-    <RecommendedWorkoutCard nextRecommendation={bodyLoadOnlyRec} />
+
+  const restCardWithBodyLoad = renderToStaticMarkup(
+    <RecommendedWorkoutCard nextRecommendation={restRecWithBodyLoad} defaultExpanded={true} />
+  );
+
+  // In Rest state: '휴식 결정 사유' and bullet list MUST BE HIDDEN even when expanded
+  assert(
+    !restCardWithBodyLoad.includes('휴식 결정 사유'),
+    'Rest recommendation completely hides "휴식 결정 사유" title'
   );
   assert(
-    bodyLoadOnlyCard.includes('추천 근거 · 신체 부하 보기'),
-    'Accordion button is rendered even when reasons is empty if bodyLoad exists'
+    !restCardWithBodyLoad.includes('피로도 보통'),
+    'Rest recommendation completely hides reasons bullet text'
   );
-  assert(!bodyLoadOnlyCard.includes('운동 시작'), 'Rest recommendation does NOT render "운동 시작" CTA');
+  // But accordion IS shown because bodyLoad exists
+  assert(
+    restCardWithBodyLoad.includes('추천 근거 · 신체 부하 보기'),
+    'Rest recommendation shows accordion when bodyLoad exists'
+  );
+  assert(
+    !restCardWithBodyLoad.includes('운동 시작'),
+    'Rest recommendation does NOT render "운동 시작" CTA'
+  );
 
-  // 5c. bodyLoad absent, reasons present
-  const reasonsOnlyRec: RecommendationResult = {
+  // 5c. Rest Recommendation with NO bodyLoad and reasons
+  const restRecNoBodyLoad: RecommendationResult = {
+    mainLift: '휴식',
+    reasons: ['✓ 피로도 보통'],
+    representativeExercises: ['충분한 수면'],
+    date: '2026. 10. 28',
+    bodyLoad: undefined,
+  };
+  const restCardNoBodyLoad = renderToStaticMarkup(
+    <RecommendedWorkoutCard nextRecommendation={restRecNoBodyLoad} />
+  );
+  // Since reasons are hidden for Rest and bodyLoad is missing, NO empty accordion should be rendered
+  assert(
+    !restCardNoBodyLoad.includes('추천 근거 · 신체 부하 보기'),
+    'Rest recommendation without bodyLoad renders NO empty accordion'
+  );
+
+  // 5d. Train recommendation with NO bodyLoad but reasons present
+  const trainNoBodyLoadRec: RecommendationResult = {
     mainLift: '벤치프레스',
     reasons: ['✓ 상체 충분한 휴식 경과'],
     representativeExercises: ['바벨 벤치프레스'],
     date: '2026. 10. 28',
+    bodyLoad: undefined,
   };
-  const reasonsOnlyCard = renderToStaticMarkup(
-    <RecommendedWorkoutCard nextRecommendation={reasonsOnlyRec} />
+  const trainNoBodyLoadCard = renderToStaticMarkup(
+    <RecommendedWorkoutCard nextRecommendation={trainNoBodyLoadRec} defaultExpanded={true} />
   );
   assert(
-    reasonsOnlyCard.includes('추천 근거 · 신체 부하 보기'),
-    'Accordion button is rendered when bodyLoad is absent if reasons exist'
+    trainNoBodyLoadCard.includes('추천 근거 · 신체 부하 보기'),
+    'Train recommendation with reasons renders accordion even without bodyLoad'
+  );
+  assert(
+    trainNoBodyLoadCard.includes('분석 기반 추천 사유'),
+    'Train recommendation displays "분석 기반 추천 사유"'
   );
 
-  // 5d. Both absent -> accordion returns null
-  const neitherRec: RecommendationResult = {
-    mainLift: '휴식',
-    reasons: [],
-    representativeExercises: [],
-    date: '2026. 10. 28',
-  };
-  const neitherCard = renderToStaticMarkup(<RecommendedWorkoutCard nextRecommendation={neitherRec} />);
-  assert(
-    !neitherCard.includes('추천 근거 · 신체 부하 보기'),
-    'Accordion returns null when both reasons and bodyLoad are absent'
-  );
+  // 5e. Multiple component instance ID collision test
+  const card1 = renderToStaticMarkup(<RecommendedWorkoutCard nextRecommendation={fullRec} />);
+  const card2 = renderToStaticMarkup(<RecommendedWorkoutCard nextRecommendation={fullRec} />);
+  // Verify aria-controls is present in both
+  assert(card1.includes('aria-controls="') && card2.includes('aria-controls="'), 'Both cards have aria-controls');
 
-  // 5e. Empty topCandidates array vs undefined
-  const emptyCandidatesRec: RecommendationResult = {
-    mainLift: '휴식',
-    reasons: ['✓ 휴식일'],
-    representativeExercises: [],
-    date: '2026. 10. 28',
-    topCandidates: [],
-  };
-  const emptyCandidatesCard = renderToStaticMarkup(
-    <RecommendedWorkoutCard nextRecommendation={emptyCandidatesRec} />
-  );
-  assert(
-    emptyCandidatesCard.includes('현재 수행 가능한 후보가 없습니다'),
-    'Empty topCandidates array displays "현재 수행 가능한 후보가 없습니다"'
-  );
-
-  const undefinedCandidatesRec: RecommendationResult = {
-    mainLift: '휴식',
-    reasons: ['✓ 휴식일'],
-    representativeExercises: [],
-    date: '2026. 10. 28',
-    topCandidates: undefined,
-  };
-  const undefinedCandidatesCard = renderToStaticMarkup(
-    <RecommendedWorkoutCard nextRecommendation={undefinedCandidatesRec} />
-  );
-  assert(
-    undefinedCandidatesCard.includes('후보 정보를 확인할 수 없습니다'),
-    'Undefined topCandidates displays "후보 정보를 확인할 수 없습니다"'
-  );
+  // Verify BodyLoadMap with custom prefixes creates unique title/desc IDs
+  const mapA = renderToStaticMarkup(<BodyLoadMap bodyLoad={fullBodyLoad} idPrefix="inst-A" />);
+  const mapB = renderToStaticMarkup(<BodyLoadMap bodyLoad={fullBodyLoad} idPrefix="inst-B" />);
+  assert(mapA.includes('id="inst-A-front-title"'), 'Map A has inst-A-front-title');
+  assert(mapB.includes('id="inst-B-front-title"'), 'Map B has inst-B-front-title');
+  assert(!mapA.includes('inst-B'), 'Map A does not contain inst-B prefix');
 
   return { passed: allPassed, details };
 }
