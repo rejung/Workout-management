@@ -12,6 +12,14 @@ import {
 import { StressDimension } from '../../domain/recommendationVNext/types/stressModel.types';
 import { AlertCircle, Activity } from 'lucide-react';
 
+import {
+  BODY_FRONT_VIEW_BOX,
+  BODY_BACK_VIEW_BOX,
+  BODY_OUTLINE_PATHS,
+  FRONT_BODY_PATHS,
+  BACK_BODY_PATHS,
+} from './bodyModelPaths';
+
 export interface BodyLoadMapProps {
   bodyLoad?: BodyLoadPresentation;
   idPrefix?: string;
@@ -175,68 +183,6 @@ export function BodyLoadMap({ bodyLoad, idPrefix = 'body-load' }: BodyLoadMapPro
   const vPullColor = getStatusColor(vPullData.status);
   const axialColor = getStatusColor(axialData.status);
 
-  /**
-   * Continuous connected 2D neutral body silhouette path.
-   * Proportioned symmetrically with arms slightly away from torso and legs naturally apart.
-   */
-  const renderConnectedBaseSilhouette = () => (
-    <path
-      d="M 60 10
-         C 52 10 46 16 46 24
-         C 46 31 50 36 55 38
-         L 55 42
-         C 46 44 38 48 30 52
-         C 26 55 24 64 24 74
-         L 22 100
-         L 18 126
-         C 17 132 18 136 21 136
-         C 24 136 26 130 27 124
-         L 31 100
-         L 32 78
-         L 38 70
-         L 40 90
-         C 40 100 38 108 38 114
-         L 37 150
-         C 36 166 36 186 39 204
-         L 35 212
-         C 34 214 36 216 40 216
-         L 47 216
-         C 49 216 49 212 48 206
-         L 48 180
-         L 47 150
-         L 58 124
-         L 62 124
-         L 73 150
-         L 72 180
-         L 72 206
-         C 71 212 71 216 73 216
-         L 80 216
-         C 84 216 86 214 85 212
-         L 81 204
-         C 84 186 84 166 83 150
-         L 82 114
-         C 82 108 80 100 80 90
-         L 82 70
-         L 88 78
-         L 89 100
-         L 93 124
-         C 94 130 96 136 99 136
-         C 102 136 103 132 102 126
-         L 98 100
-         L 96 74
-         C 96 64 94 55 90 52
-         C 82 48 74 44 65 42
-         L 65 38
-         C 70 36 74 31 74 24
-         C 74 16 68 10 60 10 Z"
-      fill="#1e293b"
-      stroke="#334155"
-      strokeWidth="1.5"
-      strokeLinejoin="round"
-      strokeLinecap="round"
-    />
-  );
-
   return (
     <div className="space-y-3 sm:space-y-4">
       {/* 1. Header with Disclaimer and Single Summary */}
@@ -277,7 +223,7 @@ export function BodyLoadMap({ bodyLoad, idPrefix = 'body-load' }: BodyLoadMapPro
           <div className="flex flex-col items-center gap-1.5 flex-1 max-w-[150px]">
             <span className="text-xs font-bold text-slate-300">정면</span>
             <svg
-              viewBox="0 0 120 220"
+              viewBox={BODY_FRONT_VIEW_BOX}
               className="w-full h-auto drop-shadow-sm select-none"
               role="img"
               aria-labelledby={`${idPrefix}-front-title ${idPrefix}-front-desc`}
@@ -288,73 +234,79 @@ export function BodyLoadMap({ bodyLoad, idPrefix = 'body-load' }: BodyLoadMapPro
               </desc>
 
               {/* Continuous Base Body Silhouette */}
-              {renderConnectedBaseSilhouette()}
+              <path
+                d={BODY_OUTLINE_PATHS.front}
+                fill="#1e293b"
+                stroke="#334155"
+                strokeWidth="2"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+
+              {/* Neutral Non-Targeted Muscles (Calves, Arms, Core, etc.) */}
+              <g fill="#1e293b" stroke="#334155" strokeWidth="1" strokeLinejoin="round" strokeLinecap="round">
+                {FRONT_BODY_PATHS.neutral.map((d, idx) => (
+                  <path key={`front-neutral-${idx}`} d={d} />
+                ))}
+              </g>
 
               {/* Active Zone: Shoulders (vertical-push) */}
-              <g data-dimension="vertical-push">
-                {/* Left Shoulder */}
-                <path
-                  d="M 55 42 C 45 44 38 48 30 52 C 26 55 24 64 24 70 L 32 76 C 36 72 38 64 42 56 Z"
-                  fill={vPushColor.fill}
-                  stroke={vPushColor.stroke}
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                  className="transition-colors duration-200"
-                />
-                {/* Right Shoulder */}
-                <path
-                  d="M 65 42 C 75 44 82 48 90 52 C 94 55 96 64 96 70 L 88 76 C 84 72 82 64 78 56 Z"
-                  fill={vPushColor.fill}
-                  stroke={vPushColor.stroke}
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                  className="transition-colors duration-200"
-                />
+              <g data-dimension="vertical-push" fill={vPushColor.fill} stroke={vPushColor.stroke}>
+                {FRONT_BODY_PATHS.verticalPush.map((d, idx) => (
+                  <path
+                    key={`v-push-${idx}`}
+                    fill={vPushColor.fill}
+                    stroke={vPushColor.stroke}
+                    strokeWidth="1.5"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    className="transition-colors duration-200"
+                    d={d}
+                  />
+                ))}
               </g>
 
               {/* Active Zone: Chest (horizontal-push) */}
-              <g data-dimension="horizontal-push">
-                {/* Left Chest */}
-                <path
-                  d="M 42 56 L 58 56 L 58 74 C 52 75 44 73 40 68 Z"
-                  fill={hPushColor.fill}
-                  stroke={hPushColor.stroke}
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                  className="transition-colors duration-200"
-                />
-                {/* Right Chest */}
-                <path
-                  d="M 62 56 L 78 56 L 80 68 C 76 73 68 75 62 74 Z"
-                  fill={hPushColor.fill}
-                  stroke={hPushColor.stroke}
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                  className="transition-colors duration-200"
-                />
+              <g data-dimension="horizontal-push" fill={hPushColor.fill} stroke={hPushColor.stroke}>
+                {FRONT_BODY_PATHS.horizontalPush.map((d, idx) => (
+                  <path
+                    key={`h-push-${idx}`}
+                    fill={hPushColor.fill}
+                    stroke={hPushColor.stroke}
+                    strokeWidth="1.5"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    className="transition-colors duration-200"
+                    d={d}
+                  />
+                ))}
               </g>
 
               {/* Active Zone: Front Thighs (knee-dominant-lower-body) */}
-              <g data-dimension="knee-dominant-lower-body">
-                {/* Left Front Thigh */}
-                <path
-                  d="M 38 114 L 37 150 L 47 150 L 58 124 C 50 120 44 116 38 114 Z"
-                  fill={kneeColor.fill}
-                  stroke={kneeColor.stroke}
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                  className="transition-colors duration-200"
-                />
-                {/* Right Front Thigh */}
-                <path
-                  d="M 82 114 L 83 150 L 73 150 L 62 124 C 70 120 76 116 82 114 Z"
-                  fill={kneeColor.fill}
-                  stroke={kneeColor.stroke}
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                  className="transition-colors duration-200"
-                />
+              <g data-dimension="knee-dominant-lower-body" fill={kneeColor.fill} stroke={kneeColor.stroke}>
+                {FRONT_BODY_PATHS.kneeDominant.map((d, idx) => (
+                  <path
+                    key={`knee-${idx}`}
+                    fill={kneeColor.fill}
+                    stroke={kneeColor.stroke}
+                    strokeWidth="1.5"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    className="transition-colors duration-200"
+                    d={d}
+                  />
+                ))}
               </g>
+
+              {/* Outer boundary stroke for crisp silhouette finish */}
+              <path
+                d={BODY_OUTLINE_PATHS.front}
+                fill="none"
+                stroke="#475569"
+                strokeWidth="2"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
             </svg>
           </div>
 
@@ -362,7 +314,7 @@ export function BodyLoadMap({ bodyLoad, idPrefix = 'body-load' }: BodyLoadMapPro
           <div className="flex flex-col items-center gap-1.5 flex-1 max-w-[150px]">
             <span className="text-xs font-bold text-slate-300">후면</span>
             <svg
-              viewBox="0 0 120 220"
+              viewBox={BODY_BACK_VIEW_BOX}
               className="w-full h-auto drop-shadow-sm select-none"
               role="img"
               aria-labelledby={`${idPrefix}-back-title ${idPrefix}-back-desc`}
@@ -372,64 +324,80 @@ export function BodyLoadMap({ bodyLoad, idPrefix = 'body-load' }: BodyLoadMapPro
                 등 중앙: {hPullData.status}, 등 바깥쪽: {vPullData.status}, 둔부 및 뒤 허벅지: {hipData.status}
               </desc>
 
-              {/* Continuous Base Body Silhouette (Identical pose & proportions) */}
-              {renderConnectedBaseSilhouette()}
+              {/* Continuous Base Body Silhouette */}
+              <path
+                d={BODY_OUTLINE_PATHS.back}
+                fill="#1e293b"
+                stroke="#334155"
+                strokeWidth="2"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
 
-              {/* Active Zone: Mid Back (horizontal-pull) */}
-              <g data-dimension="horizontal-pull">
-                <path
-                  d="M 52 44 L 68 44 L 66 76 L 54 76 Z"
-                  fill={hPullColor.fill}
-                  stroke={hPullColor.stroke}
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                  className="transition-colors duration-200"
-                />
+              {/* Neutral Non-Targeted Muscles (Spine, Neck, Arms, Calves, etc.) */}
+              <g fill="#1e293b" stroke="#334155" strokeWidth="1" strokeLinejoin="round" strokeLinecap="round">
+                {BACK_BODY_PATHS.neutral.map((d, idx) => (
+                  <path key={`back-neutral-${idx}`} d={d} />
+                ))}
               </g>
 
-              {/* Active Zone: Outer Back / Lats (vertical-pull) */}
-              <g data-dimension="vertical-pull">
-                {/* Left Lat */}
-                <path
-                  d="M 38 70 L 52 74 L 51 92 L 40 88 Z"
-                  fill={vPullColor.fill}
-                  stroke={vPullColor.stroke}
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                  className="transition-colors duration-200"
-                />
-                {/* Right Lat */}
-                <path
-                  d="M 82 70 L 68 74 L 69 92 L 80 88 Z"
-                  fill={vPullColor.fill}
-                  stroke={vPullColor.stroke}
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                  className="transition-colors duration-200"
-                />
+              {/* Active Zone: Mid Back (horizontal-pull: trapezius + upper-back mid) */}
+              <g data-dimension="horizontal-pull" fill={hPullColor.fill} stroke={hPullColor.stroke}>
+                {BACK_BODY_PATHS.horizontalPull.map((d, idx) => (
+                  <path
+                    key={`h-pull-${idx}`}
+                    fill={hPullColor.fill}
+                    stroke={hPullColor.stroke}
+                    strokeWidth="1.5"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    className="transition-colors duration-200"
+                    d={d}
+                  />
+                ))}
               </g>
 
-              {/* Active Zone: Glutes & Posterior Thighs (hip-posterior-chain) */}
-              <g data-dimension="hip-posterior-chain">
-                {/* Left Glute / Hamstring */}
-                <path
-                  d="M 39 104 C 44 102 54 102 58 106 L 58 124 L 47 150 L 37 150 Z"
-                  fill={hipColor.fill}
-                  stroke={hipColor.stroke}
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                  className="transition-colors duration-200"
-                />
-                {/* Right Glute / Hamstring */}
-                <path
-                  d="M 81 104 C 76 102 66 102 62 106 L 62 124 L 73 150 L 83 150 Z"
-                  fill={hipColor.fill}
-                  stroke={hipColor.stroke}
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                  className="transition-colors duration-200"
-                />
+              {/* Active Zone: Outer Back / Lats (vertical-pull: lats) */}
+              <g data-dimension="vertical-pull" fill={vPullColor.fill} stroke={vPullColor.stroke}>
+                {BACK_BODY_PATHS.verticalPull.map((d, idx) => (
+                  <path
+                    key={`v-pull-${idx}`}
+                    fill={vPullColor.fill}
+                    stroke={vPullColor.stroke}
+                    strokeWidth="1.5"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    className="transition-colors duration-200"
+                    d={d}
+                  />
+                ))}
               </g>
+
+              {/* Active Zone: Glutes & Posterior Thighs (hip-posterior-chain: gluteal + hamstring) */}
+              <g data-dimension="hip-posterior-chain" fill={hipColor.fill} stroke={hipColor.stroke}>
+                {BACK_BODY_PATHS.hipPosteriorChain.map((d, idx) => (
+                  <path
+                    key={`hip-${idx}`}
+                    fill={hipColor.fill}
+                    stroke={hipColor.stroke}
+                    strokeWidth="1.5"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    className="transition-colors duration-200"
+                    d={d}
+                  />
+                ))}
+              </g>
+
+              {/* Outer boundary stroke for crisp silhouette finish */}
+              <path
+                d={BODY_OUTLINE_PATHS.back}
+                fill="none"
+                stroke="#475569"
+                strokeWidth="2"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
             </svg>
           </div>
         </div>

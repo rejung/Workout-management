@@ -14,6 +14,14 @@ import {
 } from '../../domain/recommendationVNext/types/recommendationPresentation.types';
 import { CANONICAL_STRESS_DIMENSIONS } from '../../domain/recommendationVNext/stress/stressVocabulary';
 import { StressDimension } from '../../domain/recommendationVNext/types/stressModel.types';
+import {
+  BODY_FRONT_VIEW_BOX,
+  BODY_BACK_VIEW_BOX,
+  BODY_OUTLINE_PATHS,
+  FRONT_BODY_PATHS,
+  BACK_BODY_PATHS,
+} from './bodyModelPaths';
+import fs from 'fs';
 
 export function runBodyLoadMapTests(): { passed: boolean; details: string[] } {
   const details: string[] = [];
@@ -381,6 +389,101 @@ export function runBodyLoadMapTests(): { passed: boolean; details: string[] } {
   assert(mapA.includes('id="inst-A-front-title"'), 'Map A has inst-A-front-title');
   assert(mapB.includes('id="inst-B-front-title"'), 'Map B has inst-B-front-title');
   assert(!mapA.includes('inst-B'), 'Map A does not contain inst-B prefix');
+
+  // 6. Open-source High-Fidelity SVG Paths and Coordinate Space Tests
+  // 6a. Distinct Front and Back ViewBoxes preserved
+  assert(
+    BODY_FRONT_VIEW_BOX === '0 0 724 1448',
+    'BODY_FRONT_VIEW_BOX preserves native "0 0 724 1448"'
+  );
+  assert(
+    BODY_BACK_VIEW_BOX === '724 0 724 1448',
+    'BODY_BACK_VIEW_BOX preserves native "724 0 724 1448"'
+  );
+  assert(
+    renderedMap.includes('viewBox="0 0 724 1448"'),
+    'Rendered front SVG specifies native viewBox="0 0 724 1448"'
+  );
+  assert(
+    renderedMap.includes('viewBox="724 0 724 1448"'),
+    'Rendered back SVG specifies native viewBox="724 0 724 1448"'
+  );
+
+  // 6b. Continuous body outline paths preserved from SvgMaleWrapper
+  assert(
+    typeof BODY_OUTLINE_PATHS.front === 'string' && BODY_OUTLINE_PATHS.front.length > 5000,
+    'Front body outline is a non-trivial continuous SVG path'
+  );
+  assert(
+    typeof BODY_OUTLINE_PATHS.back === 'string' && BODY_OUTLINE_PATHS.back.length > 5000,
+    'Back body outline is a non-trivial continuous SVG path'
+  );
+  assert(
+    renderedMap.includes(BODY_OUTLINE_PATHS.front.slice(0, 50)),
+    'Rendered Front SVG includes actual open-source front outline'
+  );
+  assert(
+    renderedMap.includes(BODY_OUTLINE_PATHS.back.slice(0, 50)),
+    'Rendered Back SVG includes actual open-source back outline'
+  );
+
+  // 6c. Mid-back (horizontal-pull) and Outer-back / Lats (vertical-pull) isolation
+  const hPullIndex = renderedMap.indexOf('data-dimension="horizontal-pull"');
+  const vPullIndex = renderedMap.indexOf('data-dimension="vertical-pull"');
+  assert(hPullIndex !== -1 && vPullIndex !== -1, 'Both horizontal-pull and vertical-pull groups exist');
+  assert(hPullIndex !== vPullIndex, 'horizontal-pull and vertical-pull are separate groups');
+
+  const hPullChunk = renderedMap.substring(hPullIndex, hPullIndex + 300);
+  const vPullChunk = renderedMap.substring(vPullIndex, vPullIndex + 300);
+  assert(
+    hPullChunk.includes('fill="#f97316"'),
+    'horizontal-pull group has orange fill (#f97316) for 최근 부하'
+  );
+  assert(
+    vPullChunk.includes('fill="#14b8a6"'),
+    'vertical-pull group has teal fill (#14b8a6) for 최근 부하 근거 없음'
+  );
+  assert(
+    !hPullChunk.includes('fill="#14b8a6"'),
+    'horizontal-pull does not bleed into vertical-pull color'
+  );
+  assert(
+    !vPullChunk.includes('fill="#f97316"'),
+    'vertical-pull does not bleed into horizontal-pull color'
+  );
+
+  // 6d. Targeted dimension muscle path counts
+  assert(FRONT_BODY_PATHS.verticalPush.length > 0, 'verticalPush (deltoids) has valid paths');
+  assert(FRONT_BODY_PATHS.horizontalPush.length > 0, 'horizontalPush (chest) has valid paths');
+  assert(FRONT_BODY_PATHS.kneeDominant.length > 0, 'kneeDominant (quadriceps) has valid paths');
+  assert(BACK_BODY_PATHS.horizontalPull.length > 0, 'horizontalPull (trapezius + upper back) has valid paths');
+  assert(BACK_BODY_PATHS.verticalPull.length > 0, 'verticalPull (lats) has valid paths');
+  assert(BACK_BODY_PATHS.hipPosteriorChain.length > 0, 'hipPosteriorChain (gluteal + hamstrings) has valid paths');
+
+  // 6e. Neutral non-targeted body parts remain dark slate background
+  assert(FRONT_BODY_PATHS.neutral.length > 0, 'Front has neutral non-targeted paths (core, calves, arms)');
+  assert(BACK_BODY_PATHS.neutral.length > 0, 'Back has neutral non-targeted paths (erectors, calves, arms)');
+  assert(
+    renderedMap.includes(FRONT_BODY_PATHS.neutral[0].slice(0, 30)),
+    'Neutral front muscles rendered in SVG'
+  );
+  assert(
+    renderedMap.includes(BACK_BODY_PATHS.neutral[0].slice(0, 30)),
+    'Neutral back muscles rendered in SVG'
+  );
+
+  // 6f. Third-Party Licenses Notice verification
+  assert(
+    fs.existsSync('THIRD_PARTY_LICENSES.md'),
+    'THIRD_PARTY_LICENSES.md file exists in root'
+  );
+  const licenseContent = fs.readFileSync('THIRD_PARTY_LICENSES.md', 'utf8');
+  assert(
+    licenseContent.includes('ELABBASSI Hicham') &&
+    licenseContent.includes('react-native-body-highlighter') &&
+    licenseContent.includes('8ed39ac2ae9cb46fb79d77eedec7e5b029a75174'),
+    'THIRD_PARTY_LICENSES.md attributes ELABBASSI Hicham with commit 8ed39ac2ae9cb46fb79d77eedec7e5b029a75174'
+  );
 
   return { passed: allPassed, details };
 }
