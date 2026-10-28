@@ -30,6 +30,7 @@ import {
 } from '../types/historicalReplay.types';
 import { evaluateSingleHistoricalPoint } from '../replay/historicalReplayEngine';
 import { mapVNextToPresentationModel } from './vnextPresentationMapper';
+import { mapBodyLoadFromReplayResult } from './bodyLoadPresentationMapper';
 import { FinalTodayDecision } from '../types/finalTodayDecision.types';
 import { NextProjectedSession } from '../types/projectedSession.types';
 import { getNextProjectedSession } from './projectedSessionService';
@@ -98,6 +99,9 @@ export function evaluateVNextProduction(
     timezone,
   });
 
+  // Map body load presentation from evaluated replay result
+  const bodyLoad = mapBodyLoadFromReplayResult(replayResult);
+
   // Map to UI presentation contract
   const presentation = mapVNextToPresentationModel(
     replayResult.todayDecision,
@@ -106,6 +110,7 @@ export function evaluateVNextProduction(
     {
       calendarDate,
       nextProjectedSession: projectedSession,
+      bodyLoad,
     }
   );
 

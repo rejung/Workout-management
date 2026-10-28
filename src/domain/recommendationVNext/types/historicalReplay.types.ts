@@ -19,6 +19,7 @@
  */
 
 import { EvaluationContext } from './residualStressTrace.types';
+import { AllDimensionResidualStates } from './dimensionResidualState.types';
 import {
   CandidateDecisionEvaluationSet,
   CandidateDecisionEvidence,
@@ -141,6 +142,9 @@ export interface HistoricalReplayResult {
 
   /** Dimension behavior snapshot */
   readonly dimensionBehaviorSnapshot: DimensionBehaviorSnapshot;
+
+  /** Dimension residual states evaluated at this point */
+  readonly dimensionResidualStates?: AllDimensionResidualStates;
 
   /** Warnings & chronology flags */
   readonly warnings: readonly string[];

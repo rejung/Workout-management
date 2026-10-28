@@ -30,6 +30,7 @@ import {
   MainLift,
   TopCandidatePresentation,
   CandidateStatusType,
+  BodyLoadPresentation,
 } from '../types/recommendationPresentation.types';
 import { getFriendlyRecommendationDate } from '../../../utils/dateUtils';
 
@@ -278,6 +279,7 @@ export function deriveCandidateStatus(
 export interface MapVNextOptions {
   readonly calendarDate?: string;
   readonly nextProjectedSession?: NextProjectedSession;
+  readonly bodyLoad?: BodyLoadPresentation;
 }
 
 /**
@@ -458,6 +460,7 @@ export function mapVNextToPresentationModel(
     topCandidates: topCandidates ? Object.freeze(topCandidates) : undefined,
     vnextDecision: decision,
     nextProjectedSession: projectedSession,
+    bodyLoad: options?.bodyLoad,
   });
 }
 

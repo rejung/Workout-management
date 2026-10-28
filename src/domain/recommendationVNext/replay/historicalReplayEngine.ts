@@ -273,6 +273,7 @@ export function evaluateSingleHistoricalPoint(
     actualSessionAfterEvaluation: actualSessionAfter,
     actualComparison,
     dimensionBehaviorSnapshot: dimensionSnapshot,
+    dimensionResidualStates: residualStates,
     warnings: Object.freeze(warnings),
   });
 }
@@ -486,6 +487,7 @@ export function runHistoricalReplay(
       actualSessionAfterEvaluation: actualSessionAfter,
       actualComparison,
       dimensionBehaviorSnapshot: dimensionSnapshot,
+      dimensionResidualStates: residualStates,
       warnings: Object.freeze(warnings),
     });
 

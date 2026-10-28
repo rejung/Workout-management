@@ -13,10 +13,45 @@
 
 import { FinalTodayDecision } from './finalTodayDecision.types';
 import { NextProjectedSession } from './projectedSession.types';
+import { StressDimension } from './stressModel.types';
 
 export type MainLift = '벤치프레스' | 'OHP' | '데드리프트' | '바벨 로우' | '스쿼트' | '러닝' | '휴식' | (string & {});
 
 export type CandidateStatusType = 'preferred' | 'viable' | 'caution' | 'recent' | 'deferred' | 'unsupported';
+
+export type BodyLoadDisplayStatus =
+  | '최근 부하'
+  | '잔여 부하'
+  | '최근 부하 근거 없음'
+  | '판단 정보 부족';
+
+export interface DimensionUncertaintyInfo {
+  readonly hasUncertainty: boolean;
+  readonly hasBracketTraces: boolean;
+  readonly hasUncertainTraces: boolean;
+  readonly bracketTraceCount: number;
+  readonly uncertainTraceCount: number;
+  readonly potentialPersistence?: 'immediate' | 'residual' | 'historical' | 'none';
+  readonly note?: string;
+}
+
+export interface DimensionLoadPresentation {
+  readonly dimension: StressDimension;
+  readonly displayName: string;
+  readonly status: BodyLoadDisplayStatus;
+  readonly uncertainty: DimensionUncertaintyInfo;
+  readonly isImmediate: boolean;
+  readonly isResidual: boolean;
+  readonly isHistorical: boolean;
+  readonly isInsufficient: boolean;
+}
+
+export interface BodyLoadPresentation {
+  readonly dimensions: readonly DimensionLoadPresentation[];
+  readonly uncertainSameDaySessionCount: number;
+  readonly hasUncertainty: boolean;
+  readonly summary?: string;
+}
 
 export interface TopCandidatePresentation {
   readonly lift: MainLift;
@@ -47,4 +82,5 @@ export interface RecommendationResult {
   readonly topCandidates?: readonly TopCandidatePresentation[];
   readonly vnextDecision?: FinalTodayDecision;
   readonly nextProjectedSession?: NextProjectedSession;
+  readonly bodyLoad?: BodyLoadPresentation;
 }
