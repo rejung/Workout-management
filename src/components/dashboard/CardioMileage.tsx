@@ -96,13 +96,7 @@ export function RecommendedWorkoutCard({
           type="button"
           aria-expanded={showReasons}
           aria-controls={accordionContentId}
-          onClick={() => setShowReasons(!showReasons)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
-              e.preventDefault();
-              setShowReasons((prev) => !prev);
-            }
-          }}
+          onClick={() => setShowReasons((prev) => !prev)}
           className="w-full flex items-center justify-between py-2.5 px-3.5 bg-slate-950/40 hover:bg-slate-950/70 border border-slate-800/80 rounded-xl text-xs text-slate-400 hover:text-white transition-all cursor-pointer font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
         >
           <div className="flex items-center gap-2">
@@ -111,46 +105,49 @@ export function RecommendedWorkoutCard({
           </div>
           {showReasons ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
-        <AnimatePresence>
-          {showReasons && (
-            <motion.div
-              id={accordionContentId}
-              role="region"
-              aria-labelledby={accordionButtonId}
-              aria-hidden={!showReasons}
-              inert={!showReasons ? true : undefined}
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.25 }}
-              className="overflow-hidden"
-            >
-              <div className="bg-slate-950/60 border border-slate-800/60 rounded-xl p-3 sm:p-3.5 space-y-4">
-                {/* ① 신체 부하 맵 시각화 */}
-                {hasBodyLoad && (
-                  <BodyLoadMap bodyLoad={recommendation.bodyLoad} idPrefix={accordionContentId} />
-                )}
+        <div
+          id={accordionContentId}
+          role="region"
+          aria-labelledby={accordionButtonId}
+          aria-hidden={!showReasons}
+          inert={!showReasons ? true : undefined}
+        >
+          <AnimatePresence>
+            {showReasons && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.25 }}
+                className="overflow-hidden"
+              >
+                <div className="bg-slate-950/60 border border-slate-800/60 rounded-xl p-3 sm:p-3.5 space-y-4">
+                  {/* ① 신체 부하 맵 시각화 */}
+                  {hasBodyLoad && (
+                    <BodyLoadMap bodyLoad={recommendation.bodyLoad} idPrefix={accordionContentId} />
+                  )}
 
-                {/* ② 분석 기반 추천 사유: 운동 추천일 때만 표시 (!isRest) */}
-                {hasVisibleReasons && (
-                  <div className={`space-y-2 ${hasBodyLoad ? 'pt-3 border-t border-slate-800/60' : ''}`}>
-                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
-                      분석 기반 추천 사유
-                    </span>
-                    <div className="space-y-1.5">
-                      {recommendation.reasons?.map((reason, idx) => (
-                        <div key={idx} className="text-xs text-slate-300 flex items-start gap-2 font-medium">
-                          <span className="text-emerald-400 font-bold shrink-0 mt-0.5">•</span>
-                          <span>{reason.replace(/^✓\s*/, '')}</span>
-                        </div>
-                      ))}
+                  {/* ② 분석 기반 추천 사유: 운동 추천일 때만 표시 (!isRest) */}
+                  {hasVisibleReasons && (
+                    <div className={`space-y-2 ${hasBodyLoad ? 'pt-3 border-t border-slate-800/60' : ''}`}>
+                      <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
+                        분석 기반 추천 사유
+                      </span>
+                      <div className="space-y-1.5">
+                        {recommendation.reasons?.map((reason, idx) => (
+                          <div key={idx} className="text-xs text-slate-300 flex items-start gap-2 font-medium">
+                            <span className="text-emerald-400 font-bold shrink-0 mt-0.5">•</span>
+                            <span>{reason.replace(/^✓\s*/, '')}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
     );
   };

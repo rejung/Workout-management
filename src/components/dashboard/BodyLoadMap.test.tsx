@@ -666,6 +666,10 @@ export function runBodyLoadMapTests(): { passed: boolean; details: string[] } {
     expandedCard.includes('aria-hidden="false"'),
     'Expanded card has aria-expanded="true" and aria-hidden="false"'
   );
+  assert(
+    !expandedCard.includes('inert=""') && !expandedCard.includes(' inert>'),
+    'Expanded card region wrapper is NOT inert'
+  );
 
   const collapsedCardState = renderToStaticMarkup(
     <RecommendedWorkoutCard nextRecommendation={fullRec} defaultExpanded={false} />
@@ -673,6 +677,26 @@ export function runBodyLoadMapTests(): { passed: boolean; details: string[] } {
   assert(
     collapsedCardState.includes('aria-expanded="false"'),
     'Collapsed card button has aria-expanded="false"'
+  );
+  assert(
+    collapsedCardState.includes('role="region"'),
+    'Collapsed card preserves outer region wrapper in DOM'
+  );
+  assert(
+    collapsedCardState.includes('aria-hidden="true"'),
+    'Collapsed card outer region wrapper has aria-hidden="true"'
+  );
+  assert(
+    collapsedCardState.includes('inert'),
+    'Collapsed card outer region wrapper has inert attribute'
+  );
+  assert(
+    !collapsedCardState.includes('hidden=""') && !collapsedCardState.includes('style="display:none"') && !collapsedCardState.includes('style="display: none"'),
+    'Collapsed card does not use abrupt hidden or display:none on outer wrapper'
+  );
+  assert(
+    !collapsedCardState.includes('onkeydown'),
+    'Accordion button does not have manual onkeydown handler, relying on native button key activation'
   );
 
   // 8d. Mobile padding check on RecommendedWorkoutCard
