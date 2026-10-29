@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useId } from 'react';
 import {
   BodyLoadPresentation,
   DimensionLoadPresentation,
@@ -138,7 +138,11 @@ export function getStatusColor(status: BodyLoadDisplayStatus): {
  * and a compact list of movement dimensions.
  * Does NOT access database, logs, date arithmetic, or recommendation logic.
  */
-export function BodyLoadMap({ bodyLoad, idPrefix = 'body-load' }: BodyLoadMapProps) {
+export function BodyLoadMap({ bodyLoad, idPrefix }: BodyLoadMapProps) {
+  const autoId = useId();
+  const safeAutoId = autoId.replace(/[^a-zA-Z0-9_-]/g, '');
+  const effectiveIdPrefix = idPrefix ?? `body-load-${safeAutoId}`;
+
   // Safe lookup strictly by canonical dimension ID
   const getDimensionData = (dimId: StressDimension): DimensionLoadPresentation => {
     const found = bodyLoad?.dimensions?.find((d) => d.dimension === dimId);
@@ -188,28 +192,28 @@ export function BodyLoadMap({ bodyLoad, idPrefix = 'body-load' }: BodyLoadMapPro
     <div className="space-y-3 sm:space-y-4">
       {/* 1. Header with Disclaimer and Single Summary */}
       <div className="space-y-1.5">
-        <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 text-[11px] text-slate-500 font-medium">
           <div className="flex items-center gap-1.5">
             <Activity className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
             <span className="font-bold text-slate-400">신체 부하 추정 맵</span>
           </div>
-          <span className="text-[10px] text-slate-400 tracking-tight">
+          <span className="text-[10px] text-slate-400 tracking-tight break-words">
             기록 기반 추정 · 실제 근육 피로 측정값 아님
           </span>
         </div>
 
         {/* Existing Summary text displayed once */}
         {bodyLoad?.summary && (
-          <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 text-xs text-slate-300 font-medium leading-relaxed">
+          <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 text-xs text-slate-300 font-medium leading-relaxed break-words">
             {bodyLoad.summary}
           </div>
         )}
 
         {/* Overall Excluded Same-day Sessions Notice */}
         {safeExcludedCount > 0 && (
-          <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-300 text-xs">
-            <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
-            <span className="text-[11px] text-amber-200/90 leading-tight">
+          <div className="flex items-start gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-300 text-xs break-words">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-400 mt-0.5" />
+            <span className="text-[11px] text-amber-200/90 leading-tight break-words">
               당일 시간 미지정 기록 {safeExcludedCount}건 제외 (신체 부위 미배정)
             </span>
           </div>
@@ -217,9 +221,9 @@ export function BodyLoadMap({ bodyLoad, idPrefix = 'body-load' }: BodyLoadMapPro
       </div>
 
       {/* 2. Visual Section: Connected Silhouettes & Single Axial Side Item */}
-      <div className="bg-slate-950/40 border border-slate-800/80 rounded-xl p-3 sm:p-4 space-y-3">
+      <div className="bg-slate-950/40 border border-slate-800/80 rounded-xl p-2.5 sm:p-4 space-y-3">
         {/* Silhouettes: Prominently sized Front & Back */}
-        <div className="flex items-center justify-around gap-4 sm:gap-8 py-2">
+        <div className="flex items-center justify-around gap-2 sm:gap-6 py-2">
           {/* Front View */}
           <div className="flex flex-col items-center gap-1.5 flex-1 max-w-[150px]">
             <span className="text-xs font-bold text-slate-300">정면</span>
@@ -227,22 +231,22 @@ export function BodyLoadMap({ bodyLoad, idPrefix = 'body-load' }: BodyLoadMapPro
               viewBox={BODY_FRONT_VIEW_BOX}
               className="w-full h-auto drop-shadow-sm select-none"
               role="img"
-              aria-labelledby={`${idPrefix}-front-title ${idPrefix}-front-desc`}
+              aria-labelledby={`${effectiveIdPrefix}-front-title ${effectiveIdPrefix}-front-desc`}
             >
-              <title id={`${idPrefix}-front-title`}>신체 정면 부하 실루엣</title>
-              <desc id={`${idPrefix}-front-desc`}>
+              <title id={`${effectiveIdPrefix}-front-title`}>신체 정면 부하 실루엣</title>
+              <desc id={`${effectiveIdPrefix}-front-desc`}>
                 어깨: {vPushData.status}, 가슴: {hPushData.status}, 앞 허벅지: {kneeData.status}
               </desc>
 
               {/* Unique ClipPath for clean headless neck cutoff */}
               <defs>
-                <clipPath id={`${idPrefix}-neck-clip-front`}>
+                <clipPath id={`${effectiveIdPrefix}-neck-clip-front`}>
                   <path d={NECK_FINISH_PATHS.frontClip} />
                 </clipPath>
               </defs>
 
               {/* Headless Body Silhouette Group */}
-              <g clipPath={`url(#${idPrefix}-neck-clip-front)`}>
+              <g clipPath={`url(#${effectiveIdPrefix}-neck-clip-front)`}>
                 {/* Continuous Base Body Silhouette */}
                 <path
                   d={BODY_OUTLINE_PATHS.front}
@@ -338,22 +342,22 @@ export function BodyLoadMap({ bodyLoad, idPrefix = 'body-load' }: BodyLoadMapPro
               viewBox={BODY_BACK_VIEW_BOX}
               className="w-full h-auto drop-shadow-sm select-none"
               role="img"
-              aria-labelledby={`${idPrefix}-back-title ${idPrefix}-back-desc`}
+              aria-labelledby={`${effectiveIdPrefix}-back-title ${effectiveIdPrefix}-back-desc`}
             >
-              <title id={`${idPrefix}-back-title`}>신체 후면 부하 실루엣</title>
-              <desc id={`${idPrefix}-back-desc`}>
+              <title id={`${effectiveIdPrefix}-back-title`}>신체 후면 부하 실루엣</title>
+              <desc id={`${effectiveIdPrefix}-back-desc`}>
                 등 중앙: {hPullData.status}, 등 바깥쪽: {vPullData.status}, 둔부 및 뒤 허벅지: {hipData.status}
               </desc>
 
               {/* Unique ClipPath for clean headless neck cutoff */}
               <defs>
-                <clipPath id={`${idPrefix}-neck-clip-back`}>
+                <clipPath id={`${effectiveIdPrefix}-neck-clip-back`}>
                   <path d={NECK_FINISH_PATHS.backClip} />
                 </clipPath>
               </defs>
 
               {/* Headless Body Silhouette Group */}
-              <g clipPath={`url(#${idPrefix}-neck-clip-back)`}>
+              <g clipPath={`url(#${effectiveIdPrefix}-neck-clip-back)`}>
                 {/* Continuous Base Body Silhouette */}
                 <path
                   d={BODY_OUTLINE_PATHS.back}
@@ -446,10 +450,10 @@ export function BodyLoadMap({ bodyLoad, idPrefix = 'body-load' }: BodyLoadMapPro
         {/* Separate Single Item: Axial & Systemic Loading (Displayed once only) */}
         <div
           data-dimension="axial-systemic-loading"
-          className={`p-2.5 rounded-lg border ${axialColor.bg} ${axialColor.border} flex items-center justify-between gap-3 transition-colors`}
+          className={`p-2.5 rounded-lg border ${axialColor.bg} ${axialColor.border} flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-3 transition-colors`}
         >
           <div className="space-y-0.5">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-bold text-slate-200">전신 및 축성 부하</span>
               <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${axialColor.bg} ${axialColor.border} ${axialColor.text}`}>
                 {axialColor.label}
@@ -460,14 +464,14 @@ export function BodyLoadMap({ bodyLoad, idPrefix = 'body-load' }: BodyLoadMapPro
             </span>
           </div>
           {axialData.uncertainty.hasUncertainty && (
-            <span className="text-[10px] text-amber-300 font-medium shrink-0">
+            <span className="text-[10px] text-amber-300 font-medium break-words leading-tight">
               ({axialData.uncertainty.note || '불확실성 포함'})
             </span>
           )}
         </div>
 
         {/* Legend (범례) */}
-        <div className="pt-2 border-t border-slate-800/60 flex flex-wrap items-center justify-center gap-x-3.5 gap-y-1 text-[10px]">
+        <div className="pt-2 border-t border-slate-800/60 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[10px]">
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-orange-500 shrink-0" />
             <span className="text-slate-300 font-medium">최근 부하 (&lt;24h)</span>
@@ -502,21 +506,21 @@ export function BodyLoadMap({ bodyLoad, idPrefix = 'body-load' }: BodyLoadMapPro
               <div
                 key={config.id}
                 data-dimension-row={config.id}
-                className="flex items-center justify-between py-1.5 px-2.5 rounded-lg bg-slate-900/60 border border-slate-800/60"
+                className="flex flex-col gap-1 py-1.5 px-2.5 rounded-lg bg-slate-900/60 border border-slate-800/60"
               >
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="font-medium text-slate-200 truncate">{config.movementName}</span>
-                  {hasUncertainty && (
-                    <span className="text-[10px] text-amber-300 font-medium shrink-0">
-                      ({data.uncertainty.note || '불확실성 포함'})
-                    </span>
-                  )}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-slate-200">{config.movementName}</span>
+                  <span
+                    className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded border ${style.bg} ${style.border} ${style.text}`}
+                  >
+                    {style.label}
+                  </span>
                 </div>
-                <span
-                  className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded border ${style.bg} ${style.border} ${style.text}`}
-                >
-                  {style.label}
-                </span>
+                {hasUncertainty && (
+                  <span className="text-[10px] text-amber-300 font-medium break-words leading-tight">
+                    ({data.uncertainty.note || '불확실성 포함'})
+                  </span>
+                )}
               </div>
             );
           })}

@@ -510,6 +510,177 @@ export function runBodyLoadMapTests(): { passed: boolean; details: string[] } {
     'THIRD_PARTY_LICENSES.md attributes ELABBASSI Hicham with commit 8ed39ac2ae9cb46fb79d77eedec7e5b029a75174'
   );
 
+  // 7. Mobile Layout & Two-Line Uncertainty Note Tests
+  // 7a. Data with long uncertainty notes
+  const longNoteDimensions: DimensionLoadPresentation[] = [
+    {
+      dimension: 'knee-dominant-lower-body',
+      displayName: '무릎 중심 하체',
+      status: '최근 부하',
+      uncertainty: {
+        hasUncertainty: true,
+        hasBracketTraces: true,
+        hasUncertainTraces: false,
+        bracketTraceCount: 1,
+        uncertainTraceCount: 0,
+        note: '경계 시점(24h/72h) 불확실성 포함 및 당일 복합 세션 추적 지연으로 인한 추가 평가',
+      },
+      isImmediate: true,
+      isResidual: false,
+      isHistorical: false,
+      isInsufficient: false,
+    },
+    {
+      dimension: 'axial-systemic-loading',
+      displayName: '전신 및 축성 부하',
+      status: '최근 부하',
+      uncertainty: {
+        hasUncertainty: true,
+        hasBracketTraces: false,
+        hasUncertainTraces: true,
+        bracketTraceCount: 0,
+        uncertainTraceCount: 2,
+        note: '시간 미지정 기록 2건으로 인한 전신 축성 부하 불확실성 포함',
+      },
+      isImmediate: true,
+      isResidual: false,
+      isHistorical: false,
+      isInsufficient: false,
+    },
+  ];
+
+  const longNoteBodyLoad: BodyLoadPresentation = {
+    dimensions: longNoteDimensions,
+    uncertainSameDaySessionCount: 2,
+    hasUncertainty: true,
+    summary: '확인 가능한 영역에서 최근 직접 부하 근거가 감지되었습니다. 일부 영역은 불확실성을 포함합니다.',
+  };
+
+  const renderedLongNoteMap = renderToStaticMarkup(<BodyLoadMap bodyLoad={longNoteBodyLoad} idPrefix="long-note-map" />);
+
+  // 7b. Movement row layout: 2-line structure without truncation
+  const kneeRowIndex = renderedLongNoteMap.indexOf('data-dimension-row="knee-dominant-lower-body"');
+  assert(kneeRowIndex !== -1, 'knee-dominant row exists in long-note render');
+  const kneeRowChunk = renderedLongNoteMap.substring(kneeRowIndex, kneeRowIndex + 600);
+
+  assert(
+    kneeRowChunk.includes('flex flex-col gap-1'),
+    'Movement dimension row uses vertical flex column for 2-line layout'
+  );
+  assert(
+    kneeRowChunk.includes('flex items-center justify-between gap-2'),
+    'Movement dimension row line 1 contains name and status badge in justify-between flex'
+  );
+  assert(
+    !kneeRowChunk.includes('truncate') &&
+    !kneeRowChunk.includes('line-clamp') &&
+    !kneeRowChunk.includes('overflow-hidden'),
+    'Movement dimension name and uncertainty note are NOT truncated, line-clamped, or overflow-hidden'
+  );
+  assert(
+    kneeRowChunk.includes('break-words leading-tight'),
+    'Uncertainty note wraps naturally with break-words leading-tight on line 2'
+  );
+  assert(
+    kneeRowChunk.includes('경계 시점(24h/72h) 불확실성 포함 및 당일 복합 세션 추적 지연으로 인한 추가 평가'),
+    'Full long uncertainty note text is completely preserved and rendered'
+  );
+
+  // 7c. Coexistence of active load color and uncertainty note
+  assert(
+    renderedLongNoteMap.includes('data-dimension="knee-dominant-lower-body"') &&
+    kneeRowChunk.includes('최근 부하') &&
+    kneeRowChunk.includes('text-orange-400') &&
+    renderedLongNoteMap.includes('fill="#f97316"'),
+    'Active load color (#f97316) and uncertainty note coexist properly'
+  );
+
+  // 7d. Axial item mobile layout (stacked on small screens)
+  const axialIndex = renderedLongNoteMap.indexOf('data-dimension="axial-systemic-loading"');
+  assert(axialIndex !== -1, 'axial-systemic-loading item exists in long-note render');
+  const axialChunk = renderedLongNoteMap.substring(axialIndex, axialIndex + 900);
+  assert(
+    axialChunk.includes('flex flex-col sm:flex-row sm:items-center sm:justify-between'),
+    'Axial item uses flex-col on mobile and sm:flex-row on larger screens'
+  );
+  assert(
+    axialChunk.includes('break-words leading-tight'),
+    'Axial uncertainty note wraps naturally with break-words'
+  );
+
+  // 7e. Header layout for small screens
+  assert(
+    renderedLongNoteMap.includes('flex flex-col sm:flex-row sm:items-center sm:justify-between'),
+    'Header title and disclaimer stack vertically on mobile (flex-col sm:flex-row)'
+  );
+
+  // 8. Accordion Accessibility & useId Unique ID Prefix Tests
+  // 8a. BodyLoadMap auto-generated unique ID prefix when idPrefix is omitted
+  const twoMaps = renderToStaticMarkup(
+    <div>
+      <BodyLoadMap bodyLoad={fullBodyLoad} />
+      <BodyLoadMap bodyLoad={fullBodyLoad} />
+    </div>
+  );
+  assert(
+    twoMaps.includes('body-load-'),
+    'BodyLoadMap generates fallback idPrefix containing body-load- when omitted'
+  );
+  const clipMatches = [...twoMaps.matchAll(/id="(body-load-[^"]+-neck-clip-front)"/g)].map((m) => m[1]);
+  assert(
+    clipMatches.length >= 2,
+    'Both auto-generated instances in the tree render valid clipPath IDs'
+  );
+  assert(
+    clipMatches[0] !== clipMatches[1],
+    'Two BodyLoadMap instances in the same tree generate distinct clipPath IDs without collision'
+  );
+
+  // 8b. Explicit idPrefix is strictly preserved
+  const customPrefixMap = renderToStaticMarkup(<BodyLoadMap bodyLoad={fullBodyLoad} idPrefix="my-custom-prefix" />);
+  assert(
+    customPrefixMap.includes('id="my-custom-prefix-front-title"') &&
+    customPrefixMap.includes('id="my-custom-prefix-neck-clip-front"'),
+    'Explicit idPrefix="my-custom-prefix" is strictly preserved'
+  );
+
+  // 8c. Accordion button and container accessibility attributes
+  const expandedCard = renderToStaticMarkup(
+    <RecommendedWorkoutCard nextRecommendation={fullRec} defaultExpanded={true} />
+  );
+  assert(
+    expandedCard.includes('role="region"'),
+    'Accordion content container has role="region"'
+  );
+  assert(
+    expandedCard.includes('aria-labelledby="rec-accordion-') &&
+    expandedCard.includes('-btn"'),
+    'Accordion content container has aria-labelledby linked to button'
+  );
+  assert(
+    expandedCard.includes('aria-controls="rec-accordion-'),
+    'Accordion button has aria-controls linked to content container'
+  );
+  assert(
+    expandedCard.includes('aria-expanded="true"') &&
+    expandedCard.includes('aria-hidden="false"'),
+    'Expanded card has aria-expanded="true" and aria-hidden="false"'
+  );
+
+  const collapsedCardState = renderToStaticMarkup(
+    <RecommendedWorkoutCard nextRecommendation={fullRec} defaultExpanded={false} />
+  );
+  assert(
+    collapsedCardState.includes('aria-expanded="false"'),
+    'Collapsed card button has aria-expanded="false"'
+  );
+
+  // 8d. Mobile padding check on RecommendedWorkoutCard
+  assert(
+    expandedCard.includes('p-4 sm:p-6 lg:p-7'),
+    'RecommendedWorkoutCard applies responsive padding p-4 sm:p-6 lg:p-7 to prevent mobile overflow'
+  );
+
   return { passed: allPassed, details };
 }
 

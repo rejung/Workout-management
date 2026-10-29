@@ -73,7 +73,10 @@ export function RecommendedWorkoutCard({
   const actionTags = recommendation.representativeExercises || (isRest ? ['충분한 수면', '가벼운 산책', '동적 스트레칭', '수분 섭취'] : ['주동근', '코어']);
 
   // Unique id for accessibility linking
-  const accordionContentId = useId();
+  const rawId = useId();
+  const safeId = rawId.replace(/[^a-zA-Z0-9_-]/g, '');
+  const accordionContentId = `rec-accordion-${safeId}`;
+  const accordionButtonId = `${accordionContentId}-btn`;
 
   // Reasons are only visible for workout recommendations (Train state), hidden for Rest
   const hasVisibleReasons = !isRest && Boolean(recommendation.reasons && recommendation.reasons.length > 0);
@@ -89,10 +92,17 @@ export function RecommendedWorkoutCard({
     return (
       <div className="space-y-3">
         <button
+          id={accordionButtonId}
           type="button"
           aria-expanded={showReasons}
           aria-controls={accordionContentId}
           onClick={() => setShowReasons(!showReasons)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+              e.preventDefault();
+              setShowReasons((prev) => !prev);
+            }
+          }}
           className="w-full flex items-center justify-between py-2.5 px-3.5 bg-slate-950/40 hover:bg-slate-950/70 border border-slate-800/80 rounded-xl text-xs text-slate-400 hover:text-white transition-all cursor-pointer font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
         >
           <div className="flex items-center gap-2">
@@ -105,13 +115,17 @@ export function RecommendedWorkoutCard({
           {showReasons && (
             <motion.div
               id={accordionContentId}
+              role="region"
+              aria-labelledby={accordionButtonId}
+              aria-hidden={!showReasons}
+              inert={!showReasons ? true : undefined}
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.25 }}
               className="overflow-hidden"
             >
-              <div className="bg-slate-950/60 border border-slate-800/60 rounded-xl p-3.5 space-y-4">
+              <div className="bg-slate-950/60 border border-slate-800/60 rounded-xl p-3 sm:p-3.5 space-y-4">
                 {/* ① 신체 부하 맵 시각화 */}
                 {hasBodyLoad && (
                   <BodyLoadMap bodyLoad={recommendation.bodyLoad} idPrefix={accordionContentId} />
@@ -208,7 +222,7 @@ export function RecommendedWorkoutCard({
       id="next-workout-card" 
       whileHover={{ y: -3, boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.2), 0 8px 10px -6px rgb(0 0 0 / 0.2)' }}
       transition={{ duration: 0.15 }}
-      className="relative bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-7 shadow-lg flex flex-col justify-between transition-all duration-300 hover:border-emerald-500/10"
+      className="relative bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 lg:p-7 shadow-lg flex flex-col justify-between transition-all duration-300 hover:border-emerald-500/10"
     >
       <div className="space-y-6">
         {/* Top Header Label */}
@@ -230,7 +244,7 @@ export function RecommendedWorkoutCard({
 
         {/* ④ 실행 정보 (예상 다음 세션, 예상 시점) */}
         {hasExecutionDetails && (
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs py-1">
+          <div className="grid grid-cols-2 gap-x-3 sm:gap-x-6 gap-y-2 text-xs py-1">
             <div className="flex flex-col justify-center">
               <span className="text-slate-500 font-bold text-[9px] uppercase tracking-wider">예상 다음 세션</span>
               <span className="font-extrabold text-slate-100 text-sm sm:text-base leading-tight mt-0.5">{nextUp}</span>
