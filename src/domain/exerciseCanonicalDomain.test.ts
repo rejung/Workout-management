@@ -170,8 +170,10 @@ export function runCanonicalMigrationTests() {
 
   // Case 10: WeightStepPolicy integration check with canonical exercises
   const dbRowDef = DEFAULT_EXERCISES.find(e => e.id === 'dumbbell-row')!;
+  const benchDef = DEFAULT_EXERCISES.find(e => e.id === 'bench-press')!;
   assert(getWeightStep(dbRowDef as Partial<Exercise>) === 2, 'Case 10: Canonical dumbbell-row resolves to DUMBBELL_WEIGHT_STEP (2kg)');
-  assert(getWeightStep(seatedDef as Partial<Exercise>) === 2.5, 'Case 10: Canonical seated-row resolves to DEFAULT_WEIGHT_STEP (2.5kg)');
+  assert(getWeightStep(seatedDef as Partial<Exercise>) === 4.5, 'Case 10: Canonical seated-row resolves to CABLE_WEIGHT_STEP (4.5kg)');
+  assert(getWeightStep(benchDef as Partial<Exercise>) === 5, 'Case 10: Canonical bench-press resolves to BARBELL_WEIGHT_STEP (5kg)');
 
   // Group 3 Test: 닐링 케이블 플라이 -> cable-fly
   const g3_logs: WorkoutLog[] = [

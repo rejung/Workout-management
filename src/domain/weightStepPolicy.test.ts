@@ -5,11 +5,16 @@
 
 import {
   DEFAULT_WEIGHT_STEP,
+  CABLE_WEIGHT_STEP,
   DUMBBELL_WEIGHT_STEP,
+  BARBELL_WEIGHT_STEP,
   WEIGHT_STEP_POLICY,
   isDumbbellExercise,
   isCableExercise,
+  isBarbellExercise,
   getWeightStep,
+  inspectWeightStepResolution,
+  isValidWeightInput,
 } from './weightStepPolicy';
 import { Exercise } from '../types';
 
@@ -23,13 +28,17 @@ export function runWeightStepPolicyTests(): { passed: boolean; message: string }
     });
   }
 
-  // Constants verification
+  // 1. Constants verification
   assert(DEFAULT_WEIGHT_STEP === 2.5, 'DEFAULT_WEIGHT_STEP is 2.5');
+  assert(CABLE_WEIGHT_STEP === 4.5, 'CABLE_WEIGHT_STEP is 4.5');
   assert(DUMBBELL_WEIGHT_STEP === 2, 'DUMBBELL_WEIGHT_STEP is 2');
+  assert(BARBELL_WEIGHT_STEP === 5, 'BARBELL_WEIGHT_STEP is 5');
   assert(WEIGHT_STEP_POLICY.DEFAULT === 2.5, 'WEIGHT_STEP_POLICY.DEFAULT is 2.5');
+  assert(WEIGHT_STEP_POLICY.CABLE === 4.5, 'WEIGHT_STEP_POLICY.CABLE is 4.5');
   assert(WEIGHT_STEP_POLICY.DUMBBELL === 2, 'WEIGHT_STEP_POLICY.DUMBBELL is 2');
+  assert(WEIGHT_STEP_POLICY.BARBELL === 5, 'WEIGHT_STEP_POLICY.BARBELL is 5');
 
-  // Case 1: Dumbbell exercises (Step = 2kg)
+  // 2. Dumbbell exercises (Step = 2kg)
   const dumbbellExercises: Partial<Exercise>[] = [
     { id: 'custom-1', name: '덤벨 벤치프레스' },
     { id: 'dumbbell-shoulder-press', name: '덤벨 숄더 프레스 (Dumbbell Shoulder Press)' },
@@ -52,25 +61,64 @@ export function runWeightStepPolicyTests(): { passed: boolean; message: string }
     assert(step === 2, `getWeightStep returns 2 for ${ex.name}`);
   }
 
-  // Case 2: Barbell and non-dumbbell exercises (Step = 2.5kg)
-  const nonDumbbellExercises: Partial<Exercise>[] = [
+  // 3. Barbell exercises (Step = 5kg)
+  const barbellExercises: Partial<Exercise>[] = [
     { id: 'barbell-row', name: '바벨 로우 (Barbell Row)' },
     { id: 'bench-press', name: '벤치프레스 (Bench Press)' },
     { id: 'deadlift', name: '데드리프트 (Deadlift)' },
     { id: 'squat', name: '스쿼트 (Squat)' },
     { id: 'overhead-press', name: '오버헤드 프레스 (Overhead Press)' },
-    { id: 'lat-pulldown', name: '랫 풀 다운 (Lat Pulldown)' },
-    { id: 'lateral-raise', name: '사이드 레터럴 레이즈 (Side Lateral Raise)' }, // Without equipment: default 2.5kg
+    { id: 'romanian-deadlift', name: '로마니안 데드리프트 (Romanian Deadlift)' },
+    { id: 'biceps-curl', name: '바벨 컬 (Biceps Curl)' },
   ];
 
-  for (const ex of nonDumbbellExercises) {
-    const isDb = isDumbbellExercise(ex);
+  for (const ex of barbellExercises) {
+    const isBb = isBarbellExercise(ex);
     const step = getWeightStep(ex);
-    assert(isDb === false, `isDumbbellExercise returns false for ${ex.name}`);
-    assert(step === 2.5, `getWeightStep returns 2.5 for ${ex.name}`);
+    assert(isBb === true, `isBarbellExercise returns true for ${ex.name}`);
+    assert(step === 5, `getWeightStep returns 5 for ${ex.name}`);
   }
 
-  // Case 3: Priority 1 - Structured Equipment field takes precedence
+  // 4. Cable exercises (Step = 4.5kg)
+  const cableExercises: Partial<Exercise>[] = [
+    { id: 'lat-pulldown', name: '랫 풀 다운 (Lat Pulldown)' },
+    { id: 'seated-row', name: '시티드 케이블 로우 (Seated Cable Row)', equipment: 'CABLE' },
+    { id: 'face-pull', name: '페이스 풀 (Face Pull)', equipment: 'CABLE' },
+    { id: 'triceps-pushdown', name: '트라이셉스 푸쉬다운 (Triceps Pushdown)' },
+    { id: 'cable-fly', name: '케이블 플라이', equipment: 'CABLE' },
+  ];
+
+  for (const ex of cableExercises) {
+    const isCable = isCableExercise(ex);
+    const step = getWeightStep(ex);
+    assert(isCable === true, `isCableExercise returns true for ${ex.name}`);
+    assert(step === 4.5, `getWeightStep returns 4.5 for ${ex.name}`);
+  }
+
+  // 5. Machine & Unspecified equipment exercises (Step = 2.5kg DEFAULT)
+  // Ensure unclassified exercises are NOT arbitrarily treated as barbell or dumbbell
+  const otherExercises: Partial<Exercise>[] = [
+    { id: 'lateral-raise', name: '사이드 레터럴 레이즈 (Side Lateral Raise)' }, // No equipment metadata -> 2.5kg
+    { id: 'leg-press', name: '레그프레스 (Leg Press)', equipment: 'MACHINE' },
+    { id: 'leg-extension', name: '레그 익스텐션 (Leg Extension)', equipment: 'MACHINE' },
+    { id: 'leg-curl', name: '레그 컬 (Leg Curl)', equipment: 'MACHINE' },
+    { id: 'chest-fly', name: '펙덱 플라이 (Chest Fly)', equipment: 'MACHINE' },
+    { id: 'overhead-extension', name: '오버헤드 익스텐션' },
+    { id: 'calf-raise-simple', name: '카프 레이즈' },
+  ];
+
+  for (const ex of otherExercises) {
+    const isDb = isDumbbellExercise(ex);
+    const isCable = isCableExercise(ex);
+    const isBb = isBarbellExercise(ex);
+    const step = getWeightStep(ex);
+    assert(isDb === false, `isDumbbellExercise returns false for ${ex.name}`);
+    assert(isCable === false, `isCableExercise returns false for ${ex.name}`);
+    assert(isBb === false, `isBarbellExercise returns false for ${ex.name}`);
+    assert(step === 2.5, `getWeightStep returns 2.5 (DEFAULT) for ${ex.name}`);
+  }
+
+  // 6. Priority 1 - Structured Equipment field takes absolute precedence
   const lateralRaiseWithDumbbell: Partial<Exercise> = {
     id: 'lateral-raise',
     name: '사이드 레터럴 레이즈 (Side Lateral Raise)',
@@ -86,95 +134,149 @@ export function runWeightStepPolicyTests(): { passed: boolean; message: string }
   );
 
   const barbellWithEquipment: Partial<Exercise> = {
-    id: 'custom-barbell',
+    id: 'custom-row',
     name: '로우',
     equipment: 'BARBELL',
   };
   assert(
-    isDumbbellExercise(barbellWithEquipment) === false,
-    'Priority 1: equipment="BARBELL" returns false'
+    isBarbellExercise(barbellWithEquipment) === true,
+    'Priority 1: equipment="BARBELL" recognized on generic 로우'
   );
   assert(
-    getWeightStep(barbellWithEquipment) === 2.5,
-    'Priority 1: getWeightStep returns 2.5 for equipment="BARBELL"'
+    getWeightStep(barbellWithEquipment) === 5,
+    'Priority 1: getWeightStep returns 5 for equipment="BARBELL"'
   );
 
-  // Case 4: Step calculation logic with direct inputs (no auto-rounding)
+  const cableWithEquipment: Partial<Exercise> = {
+    id: 'custom-curl',
+    name: '컬',
+    equipment: 'CABLE',
+  };
+  assert(
+    isCableExercise(cableWithEquipment) === true,
+    'Priority 1: equipment="CABLE" recognized on generic 컬'
+  );
+  assert(
+    getWeightStep(cableWithEquipment) === 4.5,
+    'Priority 1: getWeightStep returns 4.5 for equipment="CABLE"'
+  );
+
+  // 7. Step calculation & direct input preservation (no auto-rounding to multiples)
+  // 7a. Dumbbell: 6 -> 8 -> 6
   const dbEx: Partial<Exercise> = { id: 'db-press', name: '덤벨 벤치프레스' };
   const dbStep = getWeightStep(dbEx);
+  assert(dbStep === 2, 'Dumbbell step is 2kg');
+  let dbW = 6;
+  dbW = Number((dbW + dbStep).toFixed(2));
+  assert(dbW === 8, 'Dumbbell 6kg + 2kg = 8kg');
+  dbW = Math.max(0, Number((dbW - dbStep).toFixed(2)));
+  assert(dbW === 6, 'Dumbbell 8kg - 2kg = 6kg');
 
-  // 20kg + 2 -> 22kg -> 24kg -> 22kg
-  let weight = 20;
-  weight = Number((weight + dbStep).toFixed(2));
-  assert(weight === 22, 'Dumbbell 20kg + 2kg = 22kg');
-  weight = Number((weight + dbStep).toFixed(2));
-  assert(weight === 24, 'Dumbbell 22kg + 2kg = 24kg');
-  weight = Math.max(0, Number((weight - dbStep).toFixed(2)));
-  assert(weight === 22, 'Dumbbell 24kg - 2kg = 22kg');
+  // 7b. Dumbbell 20kg + 2 -> 22 -> 24 -> 22
+  let dbW2 = 20;
+  dbW2 = Number((dbW2 + dbStep).toFixed(2));
+  assert(dbW2 === 22, 'Dumbbell 20kg + 2kg = 22kg');
+  dbW2 = Number((dbW2 + dbStep).toFixed(2));
+  assert(dbW2 === 24, 'Dumbbell 22kg + 2kg = 24kg');
+  dbW2 = Math.max(0, Number((dbW2 - dbStep).toFixed(2)));
+  assert(dbW2 === 22, 'Dumbbell 24kg - 2kg = 22kg');
 
-  // Barbell 20kg + 2.5 -> 22.5kg -> 25kg -> 22.5kg
-  const bbEx: Partial<Exercise> = { id: 'bb-row', name: '바벨 로우' };
+  // 7c. Barbell: 20 -> 25 -> 20
+  const bbEx: Partial<Exercise> = { id: 'bb-bench', name: '벤치프레스', equipment: 'BARBELL' };
   const bbStep = getWeightStep(bbEx);
-  let bbWeight = 20;
-  bbWeight = Number((bbWeight + bbStep).toFixed(2));
-  assert(bbWeight === 22.5, 'Barbell 20kg + 2.5kg = 22.5kg');
-  bbWeight = Number((bbWeight + bbStep).toFixed(2));
-  assert(bbWeight === 25, 'Barbell 22.5kg + 2.5kg = 25kg');
-  bbWeight = Math.max(0, Number((bbWeight - bbStep).toFixed(2)));
-  assert(bbWeight === 22.5, 'Barbell 25kg - 2.5kg = 22.5kg');
+  assert(bbStep === 5, 'Barbell step is 5kg');
+  let bbW = 20;
+  bbW = Number((bbW + bbStep).toFixed(2));
+  assert(bbW === 25, 'Barbell 20kg + 5kg = 25kg');
+  bbW = Math.max(0, Number((bbW - bbStep).toFixed(2)));
+  assert(bbW === 20, 'Barbell 25kg - 5kg = 20kg');
 
-  // User direct input: 21kg + 2kg = 23kg, - 2kg = 21kg (no rounding to multiple of 2)
-  let userDirectWeight = 21;
-  userDirectWeight = Number((userDirectWeight + dbStep).toFixed(2));
-  assert(userDirectWeight === 23, 'Direct input 21kg + 2kg = 23kg');
-  userDirectWeight = Math.max(0, Number((userDirectWeight - dbStep).toFixed(2)));
-  assert(userDirectWeight === 21, 'Direct input 23kg - 2kg = 21kg');
+  // 7d. Barbell: 25 ± 5kg
+  let bbW25 = 25;
+  assert(Number((bbW25 + bbStep).toFixed(2)) === 30, 'Barbell 25kg + 5kg = 30kg');
+  assert(Math.max(0, Number((bbW25 - bbStep).toFixed(2))) === 20, 'Barbell 25kg - 5kg = 20kg');
 
-  // Existing 22.5kg on dumbbell exercise + 2kg = 24.5kg (preserved decimal)
-  let existingDecimalWeight = 22.5;
-  existingDecimalWeight = Number((existingDecimalWeight + dbStep).toFixed(2));
-  assert(existingDecimalWeight === 24.5, 'Existing 22.5kg + 2kg = 24.5kg');
+  // 7e. Cable: 7 -> 11.5 -> 7
+  const cableEx: Partial<Exercise> = { id: 'seated-row', equipment: 'CABLE' };
+  const cableStep = getWeightStep(cableEx);
+  assert(cableStep === 4.5, 'Cable step is 4.5kg');
+  let cableW = 7;
+  cableW = Number((cableW + cableStep).toFixed(2));
+  assert(cableW === 11.5, 'Cable 7kg + 4.5kg = 11.5kg');
+  cableW = Math.max(0, Number((cableW - cableStep).toFixed(2)));
+  assert(cableW === 7, 'Cable 11.5kg - 4.5kg = 7kg');
 
-  // 0kg boundary
-  let nearZeroWeight = 2;
-  nearZeroWeight = Math.max(0, Number((nearZeroWeight - dbStep).toFixed(2)));
-  assert(nearZeroWeight === 0, '2kg - 2kg = 0kg');
-  nearZeroWeight = Math.max(0, Number((nearZeroWeight - dbStep).toFixed(2)));
-  assert(nearZeroWeight === 0, '0kg - 2kg clamped to 0kg');
+  // 7f. Cable: 4.5 ± 4.5kg
+  let cableW45 = 4.5;
+  assert(Number((cableW45 + cableStep).toFixed(2)) === 9.0, 'Cable 4.5kg + 4.5kg = 9.0kg');
+  assert(Math.max(0, Number((cableW45 - cableStep).toFixed(2))) === 0, 'Cable 4.5kg - 4.5kg = 0kg');
 
-  // Case 5: Other log types
+  // 7g. Direct input preservation (Side Lateral Raise 6kg, Barbell 21kg)
+  const lateralRaiseEx: Partial<Exercise> = { id: 'lateral-raise', name: '사이드 레터럴 레이즈' };
+  const lateralStep = getWeightStep(lateralRaiseEx);
+  assert(lateralStep === 2.5, 'Side lateral raise default step is 2.5kg');
+  let latW = 6; // User directly types 6kg
+  latW = Number((latW + lateralStep).toFixed(2));
+  assert(latW === 8.5, 'Direct input 6kg + 2.5kg = 8.5kg (preserved, not rounded to 2.5 multiple)');
+  latW = Math.max(0, Number((latW - lateralStep).toFixed(2)));
+  assert(latW === 6, 'Direct input 8.5kg - 2.5kg = 6kg (preserved)');
+
+  let bbDirectW = 21; // User directly types 21kg on barbell
+  bbDirectW = Number((bbDirectW + bbStep).toFixed(2));
+  assert(bbDirectW === 26, 'Barbell direct input 21kg + 5kg = 26kg (preserved, not rounded to 5 multiple)');
+  bbDirectW = Math.max(0, Number((bbDirectW - bbStep).toFixed(2)));
+  assert(bbDirectW === 21, 'Barbell direct input 26kg - 5kg = 21kg (preserved)');
+
+  // 7h. 0kg lower bound clamps
+  let nearZeroBb = 5;
+  nearZeroBb = Math.max(0, Number((nearZeroBb - bbStep).toFixed(2)));
+  assert(nearZeroBb === 0, 'Barbell 5kg - 5kg = 0kg');
+  nearZeroBb = Math.max(0, Number((nearZeroBb - bbStep).toFixed(2)));
+  assert(nearZeroBb === 0, 'Barbell 0kg - 5kg clamped to 0kg');
+
+  let nearZeroCable = 4.5;
+  nearZeroCable = Math.max(0, Number((nearZeroCable - cableStep).toFixed(2)));
+  assert(nearZeroCable === 0, 'Cable 4.5kg - 4.5kg = 0kg');
+  nearZeroCable = Math.max(0, Number((nearZeroCable - cableStep).toFixed(2)));
+  assert(nearZeroCable === 0, 'Cable 0kg - 4.5kg clamped to 0kg');
+
+  let nearZeroDb = 2;
+  nearZeroDb = Math.max(0, Number((nearZeroDb - dbStep).toFixed(2)));
+  assert(nearZeroDb === 0, 'Dumbbell 2kg - 2kg = 0kg');
+  nearZeroDb = Math.max(0, Number((nearZeroDb - dbStep).toFixed(2)));
+  assert(nearZeroDb === 0, 'Dumbbell 0kg - 2kg clamped to 0kg');
+
+  // 8. Other log types safely default to 2.5kg step
   const pullUp: Partial<Exercise> = { id: 'pull-up', name: '풀업 (Pull-Up)', logType: 'BODYWEIGHT_REPS' };
   assert(isDumbbellExercise(pullUp) === false, 'Pull-up is not a dumbbell exercise');
+  assert(isBarbellExercise(pullUp) === false, 'Pull-up is not a barbell exercise');
   assert(getWeightStep(pullUp) === 2.5, 'Pull-up defaults safely to 2.5');
 
   const running: Partial<Exercise> = { id: 'treadmill', name: '트레드밀 (Treadmill)', logType: 'CARDIO' };
   assert(isDumbbellExercise(running) === false, 'Running is not a dumbbell exercise');
+  assert(getWeightStep(running) === 2.5, 'Running defaults safely to 2.5');
 
   const plank: Partial<Exercise> = { id: 'plank', name: '플랭크 (Plank)', logType: 'TIME_BASED' };
   assert(isDumbbellExercise(plank) === false, 'Plank is not a dumbbell exercise');
+  assert(getWeightStep(plank) === 2.5, 'Plank defaults safely to 2.5');
 
-  // Change Unit 1 - Specific Audit Test Suite (Cases 1 - 7)
-  // Case 1: 덤벨 벤치프레스 equipment = DUMBBELL -> 2kg
+  // 9. Audit Suite: Equipment metadata priority and conflict handling
   const c1: Partial<Exercise> = { id: 'custom-db-bench', name: '덤벨 벤치프레스', equipment: 'DUMBBELL' };
   assert(getWeightStep(c1) === 2, 'Audit Case 1: 덤벨 벤치프레스 (equipment: DUMBBELL) -> 2kg');
 
-  // Case 2: 덤벨 로우 equipment = DUMBBELL -> 2kg
   const c2: Partial<Exercise> = { id: 'custom-db-row', name: '덤벨 로우', equipment: 'DUMBBELL' };
   assert(getWeightStep(c2) === 2, 'Audit Case 2: 덤벨 로우 (equipment: DUMBBELL) -> 2kg');
 
-  // Case 3: 해머 컬 equipment = DUMBBELL -> 2kg
   const c3: Partial<Exercise> = { id: 'dumbbell-hammer-curl', name: '해머 컬 (Hammer Curl)', equipment: 'DUMBBELL' };
   assert(getWeightStep(c3) === 2, 'Audit Case 3: 해머 컬 (equipment: DUMBBELL) -> 2kg');
 
-  // Case 4: 바벨 로우 equipment = BARBELL -> 2.5kg
   const c4: Partial<Exercise> = { id: 'barbell-row', name: '바벨 로우 (Barbell Row)', equipment: 'BARBELL' };
-  assert(getWeightStep(c4) === 2.5, 'Audit Case 4: 바벨 로우 (equipment: BARBELL) -> 2.5kg');
+  assert(getWeightStep(c4) === 5, 'Audit Case 4: 바벨 로우 (equipment: BARBELL) -> 5kg');
 
-  // Case 5: 벤치프레스 equipment = BARBELL -> 2.5kg
   const c5: Partial<Exercise> = { id: 'bench-press', name: '벤치프레스 (Bench Press)', equipment: 'BARBELL' };
-  assert(getWeightStep(c5) === 2.5, 'Audit Case 5: 벤치프레스 (equipment: BARBELL) -> 2.5kg');
+  assert(getWeightStep(c5) === 5, 'Audit Case 5: 벤치프레스 (equipment: BARBELL) -> 5kg');
 
-  // Case 6: metadata 없는 legacy 덤벨 운동 -> 기존 name fallback으로 2kg
+  // Legacy dumbbell without metadata -> name fallback yields 2kg
   const c6_1: Partial<Exercise> = { id: 'legacy-1', name: '덤벨 숄더 프레스' };
   const c6_2: Partial<Exercise> = { id: 'legacy-2', name: '원암 덤벨 로우' };
   const c6_3: Partial<Exercise> = { id: 'legacy-3', name: '인클라인 덤벨 로우' };
@@ -186,137 +288,86 @@ export function runWeightStepPolicyTests(): { passed: boolean; message: string }
   assert(getWeightStep(c6_4) === 2, 'Audit Case 6.4: legacy 덤벨 컬 (no metadata) -> 2kg (name fallback)');
   assert(getWeightStep(c6_5) === 2, 'Audit Case 6.5: legacy 덤벨 플라이 (no metadata) -> 2kg (name fallback)');
 
-  // Case 7: metadata와 이름이 충돌 (예: name = "덤벨 로우", equipment = "BARBELL") -> metadata 우선 확인
+  // Conflict: name = "덤벨 로우", equipment = "BARBELL" -> equipment metadata takes precedence
   const c7: Partial<Exercise> = { id: 'conflict-test', name: '덤벨 로우', equipment: 'BARBELL' };
   assert(
     isDumbbellExercise(c7) === false,
     'Audit Case 7: name="덤벨 로우", equipment="BARBELL" -> metadata takes precedence (isDumbbell: false)'
   );
   assert(
-    getWeightStep(c7) === 2.5,
-    'Audit Case 7: name="덤벨 로우", equipment="BARBELL" -> getWeightStep returns 2.5kg'
+    isBarbellExercise(c7) === true,
+    'Audit Case 7: name="덤벨 로우", equipment="BARBELL" -> metadata takes precedence (isBarbell: true)'
+  );
+  assert(
+    getWeightStep(c7) === 5,
+    'Audit Case 7: name="덤벨 로우", equipment="BARBELL" -> getWeightStep returns 5kg'
   );
 
-  // Change Unit 2 - Additional Validation Tests (Cases 1 - 8)
-  // Case 1: Bench Press (equipment: BARBELL) -> 2.5kg
-  const cu2_c1: Partial<Exercise> = { id: 'bench-press', name: '벤치프레스 (Bench Press)', equipment: 'BARBELL' };
-  assert(getWeightStep(cu2_c1) === 2.5, 'CU2 Case 1: Bench Press (BARBELL) -> 2.5kg');
+  // Reverse Conflict: name = "바벨 로우", equipment = "DUMBBELL"
+  const c8: Partial<Exercise> = { id: 'conflict-reverse', name: '바벨 로우', equipment: 'DUMBBELL' };
+  assert(isDumbbellExercise(c8) === true, 'Reverse conflict: equipment="DUMBBELL" overrides barbell name');
+  assert(isBarbellExercise(c8) === false, 'Reverse conflict: isBarbellExercise is false');
+  assert(getWeightStep(c8) === 2, 'Reverse conflict: getWeightStep returns 2kg');
 
-  // Case 2: Squat (equipment: BARBELL) -> 2.5kg
-  const cu2_c2: Partial<Exercise> = { id: 'squat', name: '스쿼트 (Squat)', equipment: 'BARBELL' };
-  assert(getWeightStep(cu2_c2) === 2.5, 'CU2 Case 2: Squat (BARBELL) -> 2.5kg');
+  // Conflict with CABLE: name = "바벨 컬", equipment = "CABLE"
+  const c9: Partial<Exercise> = { id: 'conflict-cable', name: '바벨 컬', equipment: 'CABLE' };
+  assert(isCableExercise(c9) === true, 'Cable conflict: equipment="CABLE" overrides barbell name');
+  assert(getWeightStep(c9) === 4.5, 'Cable conflict: getWeightStep returns 4.5kg');
 
-  // Case 3: Dumbbell Shoulder Press (equipment: DUMBBELL) -> 2kg
-  const cu2_c3: Partial<Exercise> = { id: 'dumbbell-shoulder-press', name: '덤벨 숄더 프레스 (Dumbbell Shoulder Press)', equipment: 'DUMBBELL' };
-  assert(getWeightStep(cu2_c3) === 2, 'CU2 Case 3: Dumbbell Shoulder Press (DUMBBELL) -> 2kg');
+  // Conflict with MACHINE: name = "스쿼트", equipment = "MACHINE"
+  const c10: Partial<Exercise> = { id: 'smith-squat', name: '스쿼트', equipment: 'MACHINE' };
+  assert(isBarbellExercise(c10) === false, 'Machine conflict: equipment="MACHINE" overrides squat name');
+  assert(getWeightStep(c10) === 2.5, 'Machine conflict: getWeightStep returns 2.5kg (DEFAULT)');
 
-  // Case 4: Cable Row (equipment: CABLE) -> 2.5kg
-  const cu2_c4: Partial<Exercise> = { id: 'seated-row', name: '시티드 케이블 로우 (Seated Cable Row)', equipment: 'CABLE' };
-  assert(getWeightStep(cu2_c4) === 2.5, 'CU2 Case 4: Cable Row (CABLE) -> 2.5kg');
+  // 10. Diagnostics function (inspectWeightStepResolution) consistency
+  const diagNull = inspectWeightStepResolution(null);
+  assert(diagNull.step === 2.5, 'Inspect null returns step 2.5');
+  assert(diagNull.source === 'DEFAULT', 'Inspect null returns source DEFAULT');
 
-  // Case 5: Leg Press (equipment: MACHINE) -> 2.5kg
-  const cu2_c5: Partial<Exercise> = { id: 'leg-press', name: '레그프레스 (Leg Press)', equipment: 'MACHINE' };
-  assert(getWeightStep(cu2_c5) === 2.5, 'CU2 Case 5: Leg Press (MACHINE) -> 2.5kg');
+  const diagUndefined = inspectWeightStepResolution(undefined);
+  assert(diagUndefined.step === 2.5, 'Inspect undefined returns step 2.5');
+  assert(diagUndefined.source === 'DEFAULT', 'Inspect undefined returns source DEFAULT');
 
-  // Case 6: Pull-Up (equipment: BODYWEIGHT, logType: BODYWEIGHT_REPS) -> no adverse UI step impact, step defaults safely to 2.5
-  const cu2_c6: Partial<Exercise> = { id: 'pull-up', name: '풀업 (Pull-Up)', equipment: 'BODYWEIGHT', logType: 'BODYWEIGHT_REPS' };
-  assert(isDumbbellExercise(cu2_c6) === false, 'CU2 Case 6: Pull-Up is not dumbbell');
-  assert(getWeightStep(cu2_c6) === 2.5, 'CU2 Case 6: Pull-Up (BODYWEIGHT) step is default 2.5kg');
+  const diagFallbackBarbell = inspectWeightStepResolution(null, '바벨 로우');
+  assert(diagFallbackBarbell.step === 5, 'Inspect fallbackName 바벨 로우 returns 5');
+  assert(diagFallbackBarbell.source === 'NAME_FALLBACK', 'Inspect fallbackName source is NAME_FALLBACK');
 
-  // Case 7: Running (equipment: CARDIO, logType: CARDIO) -> normal cardio logType logic, step defaults safely to 2.5
-  const cu2_c7: Partial<Exercise> = { id: 'treadmill', name: '트레드밀 (Treadmill)', equipment: 'CARDIO', logType: 'CARDIO' };
-  assert(isDumbbellExercise(cu2_c7) === false, 'CU2 Case 7: Treadmill is not dumbbell');
-  assert(getWeightStep(cu2_c7) === 2.5, 'CU2 Case 7: Treadmill (CARDIO) step is default 2.5kg');
+  const diagFallbackDumbbell = inspectWeightStepResolution(null, '덤벨 로우');
+  assert(diagFallbackDumbbell.step === 2, 'Inspect fallbackName 덤벨 로우 returns 2');
+  assert(diagFallbackDumbbell.isDumbbell === true, 'Inspect fallbackName isDumbbell is true');
 
-  // Case 8: Legacy custom dumbbell exercise (equipment undefined) -> name fallback ensures 2kg
-  const cu2_c8: Partial<Exercise> = { id: 'user-custom-db-row-123', name: '나의 덤벨 로우', isCustom: true };
-  assert(isDumbbellExercise(cu2_c8) === true, 'CU2 Case 8: Legacy custom dumbbell exercise correctly identified by name fallback');
-  assert(getWeightStep(cu2_c8) === 2, 'CU2 Case 8: Legacy custom dumbbell exercise maintains 2kg step via fallback');
+  const diagFallbackCable = inspectWeightStepResolution(null, '시티드 케이블 로우');
+  assert(diagFallbackCable.step === 4.5, 'Inspect fallbackName 시티드 케이블 로우 returns 4.5');
 
-  // Change Unit 3 - App-wide Adoption Audit & UI Integration Tests (Cases 1 - 10)
-  // Case 1: Dumbbell 20kg (+ -> 22kg, + -> 24kg, - -> 22kg)
-  const cu3_dbEx: Partial<Exercise> = { id: 'dumbbell-shoulder-press', name: '덤벨 숄더 프레스', equipment: 'DUMBBELL' };
-  const cu3_dbStep = getWeightStep(cu3_dbEx);
-  let cu3_w = 20;
-  cu3_w = Number((cu3_w + cu3_dbStep).toFixed(2));
-  assert(cu3_w === 22, 'CU3 Case 1: Dumbbell 20kg + step = 22kg');
-  cu3_w = Number((cu3_w + cu3_dbStep).toFixed(2));
-  assert(cu3_w === 24, 'CU3 Case 1: Dumbbell 22kg + step = 24kg');
-  cu3_w = Math.max(0, Number((cu3_w - cu3_dbStep).toFixed(2)));
-  assert(cu3_w === 22, 'CU3 Case 1: Dumbbell 24kg - step = 22kg');
+  const diagCanonicalBench = inspectWeightStepResolution({ id: 'bench-press' });
+  assert(diagCanonicalBench.step === 5, 'Inspect canonical bench-press returns 5');
+  assert(diagCanonicalBench.source === 'CANONICAL_ID', 'Inspect canonical bench-press source is CANONICAL_ID');
 
-  // Case 2: Barbell 20kg (+ -> 22.5kg, + -> 25kg, - -> 22.5kg)
-  const cu3_bbEx: Partial<Exercise> = { id: 'bench-press', name: '벤치프레스', equipment: 'BARBELL' };
-  const cu3_bbStep = getWeightStep(cu3_bbEx);
-  let cu3_bbW = 20;
-  cu3_bbW = Number((cu3_bbW + cu3_bbStep).toFixed(2));
-  assert(cu3_bbW === 22.5, 'CU3 Case 2: Barbell 20kg + step = 22.5kg');
-  cu3_bbW = Number((cu3_bbW + cu3_bbStep).toFixed(2));
-  assert(cu3_bbW === 25, 'CU3 Case 2: Barbell 22.5kg + step = 25kg');
-  cu3_bbW = Math.max(0, Number((cu3_bbW - cu3_bbStep).toFixed(2)));
-  assert(cu3_bbW === 22.5, 'CU3 Case 2: Barbell 25kg - step = 22.5kg');
+  const diagCanonicalSeatedRow = inspectWeightStepResolution({ id: 'seated-row' });
+  assert(diagCanonicalSeatedRow.step === 4.5, 'Inspect canonical seated-row returns 4.5');
+  assert(diagCanonicalSeatedRow.source === 'CANONICAL_ID', 'Inspect canonical seated-row source is CANONICAL_ID');
 
-  // Case 3: Cable exercise 20kg (+ -> 22.5kg, maintains DEFAULT)
-  const cu3_cableEx: Partial<Exercise> = { id: 'seated-row', name: '시티드 케이블 로우', equipment: 'CABLE' };
-  const cu3_cableStep = getWeightStep(cu3_cableEx);
-  assert(cu3_cableStep === 2.5, 'CU3 Case 3: Cable exercise maintains DEFAULT 2.5kg step');
-  assert(Number((20 + cu3_cableStep).toFixed(2)) === 22.5, 'CU3 Case 3: Cable 20kg + step = 22.5kg');
+  const diagConflict = inspectWeightStepResolution({ id: 'test', name: '덤벨 로우', equipment: 'BARBELL' });
+  assert(diagConflict.step === 5, 'Inspect conflict returns actual step 5');
+  assert(diagConflict.source === 'EQUIPMENT_METADATA', 'Inspect conflict source is EQUIPMENT_METADATA');
+  assert(Boolean(diagConflict.conflict), 'Inspect conflict reports conflict message');
 
-  // Case 4: Machine exercise 20kg (+ -> 22.5kg, maintains DEFAULT)
-  const cu3_machEx: Partial<Exercise> = { id: 'leg-press', name: '레그프레스', equipment: 'MACHINE' };
-  const cu3_machStep = getWeightStep(cu3_machEx);
-  assert(cu3_machStep === 2.5, 'CU3 Case 4: Machine exercise maintains DEFAULT 2.5kg step');
-  assert(Number((20 + cu3_machStep).toFixed(2)) === 22.5, 'CU3 Case 4: Machine 20kg + step = 22.5kg');
-
-  // Case 5: Legacy custom dumbbell (equipment undefined, name = "나의 덤벨 로우") -> 2kg Step
-  const cu3_legacyDb: Partial<Exercise> = { id: 'custom-db-1234', name: '나의 덤벨 로우', isCustom: true };
-  assert(getWeightStep(cu3_legacyDb) === 2, 'CU3 Case 5: Legacy custom dumbbell correctly yields 2kg step');
-
-  // Case 6: Direct input 21kg (Dumbbell: + -> 23kg, - -> 19kg, no auto-rounding)
-  let cu3_directW = 21;
-  cu3_directW = Number((cu3_directW + cu3_dbStep).toFixed(2));
-  assert(cu3_directW === 23, 'CU3 Case 6: Direct input 21kg + 2kg = 23kg (no rounding)');
-  cu3_directW = Math.max(0, Number((21 - cu3_dbStep).toFixed(2)));
-  assert(cu3_directW === 19, 'CU3 Case 6: Direct input 21kg - 2kg = 19kg (no rounding)');
-
-  // Case 7: Existing record 22.5kg (Dumbbell: + -> 24.5kg, decimal preserved)
-  const cu3_existingW = 22.5;
-  const cu3_nextW = Number((cu3_existingW + cu3_dbStep).toFixed(2));
-  assert(cu3_nextW === 24.5, 'CU3 Case 7: Existing record 22.5kg + 2kg = 24.5kg (preserved decimal)');
-
-  // Case 8: BODYWEIGHT_REPS (Pull-up) -> safe default step, no adverse UI step effect
-  const cu3_bwEx: Partial<Exercise> = { id: 'pull-up', name: '풀업', equipment: 'BODYWEIGHT', logType: 'BODYWEIGHT_REPS' };
-  assert(getWeightStep(cu3_bwEx) === 2.5, 'CU3 Case 8: BODYWEIGHT_REPS step defaults safely to 2.5');
-
-  // Case 9: CARDIO (Running) -> no adverse UI step effect
-  const cu3_cardioEx: Partial<Exercise> = { id: 'treadmill', name: '트레드밀', equipment: 'CARDIO', logType: 'CARDIO' };
-  assert(getWeightStep(cu3_cardioEx) === 2.5, 'CU3 Case 9: CARDIO step defaults safely to 2.5');
-
-  // Case 10: TIME_BASED (Plank) -> no adverse UI step effect
-  const cu3_timeEx: Partial<Exercise> = { id: 'plank', name: '플랭크', logType: 'TIME_BASED' };
-  assert(getWeightStep(cu3_timeEx) === 2.5, 'CU3 Case 10: TIME_BASED step defaults safely to 2.5');
-
-  // --- Cable Exercise & Direct Input Tests ---
-  // Case 11: Cable Exercise Recognition
-  assert(isCableExercise({ id: 'seated-row', name: '시티드 케이블 로우', equipment: 'CABLE' }), 'Cable: seated-row recognized as cable');
-  assert(isCableExercise({ id: 'cable-fly', name: '케이블 플라이', equipment: 'CABLE' }), 'Cable: cable-fly recognized as cable');
-  assert(isCableExercise({ id: 'lat-pulldown', name: '랫 풀 다운', equipment: 'CABLE' }), 'Cable: lat-pulldown recognized as cable');
-  assert(isCableExercise({ id: 'triceps-pushdown', name: '트라이셉스 푸쉬다운', equipment: 'CABLE' }), 'Cable: triceps-pushdown recognized as cable');
-  assert(isCableExercise({ id: 'face-pull', name: '페이스 풀', equipment: 'CABLE' }), 'Cable: face-pull recognized as cable');
-  assert(isCableExercise('케이블 컬'), 'Cable: name string "케이블 컬" recognized as cable');
-  assert(isCableExercise({ id: 'custom-cable-1', name: '커스텀 케이블 프레스' }), 'Cable: name heuristic recognized as cable');
-  assert(!isCableExercise({ id: 'bench-press', name: '벤치프레스', equipment: 'BARBELL' }), 'Cable: bench-press is not cable');
-  assert(!isCableExercise({ id: 'dumbbell-curl', name: '덤벨 컬', equipment: 'DUMBBELL' }), 'Cable: dumbbell-curl is not cable');
-
-  // Case 12: +/- button steps preserve separate 2.5kg increment on non-multiple base
-  const direct7 = 7;
-  const direct11 = 11;
-  const direct13_5 = 13.5;
-  const stepIncrement = getWeightStep({ id: 'seated-row', equipment: 'CABLE' });
-  assert(stepIncrement === 2.5, 'Cable: +/- button step is 2.5kg');
-  assert(Number((direct7 + stepIncrement).toFixed(2)) === 9.5, 'Cable: 7kg + 2.5kg = 9.5kg');
-  assert(Number((direct11 + stepIncrement).toFixed(2)) === 13.5, 'Cable: 11kg + 2.5kg = 13.5kg');
-  assert(Number((direct13_5 + stepIncrement).toFixed(2)) === 16.0, 'Cable: 13.5kg + 2.5kg = 16.0kg');
+  // 11. Direct Input Validation Rules (Testing production isValidWeightInput)
+  assert(isValidWeightInput(0) === true, 'Direct input: 0 is valid');
+  assert(isValidWeightInput('0') === true, 'Direct input: "0" is valid');
+  assert(isValidWeightInput(6) === true, 'Direct input: 6 is valid (Side Lateral Raise 6kg)');
+  assert(isValidWeightInput('6') === true, 'Direct input: "6" is valid');
+  assert(isValidWeightInput(6.75) === true, 'Direct input: 6.75 is valid');
+  assert(isValidWeightInput(21) === true, 'Direct input: 21 is valid (Barbell 21kg non-multiple)');
+  assert(isValidWeightInput('') === false, 'Direct input: empty string is blocked on submit');
+  assert(isValidWeightInput('   ') === false, 'Direct input: whitespace is blocked on submit');
+  assert(isValidWeightInput(null) === false, 'Direct input: null is blocked on submit');
+  assert(isValidWeightInput(undefined) === false, 'Direct input: undefined is blocked on submit');
+  assert(isValidWeightInput(-1) === false, 'Direct input: negative is blocked on submit');
+  assert(isValidWeightInput('-5') === false, 'Direct input: negative string is blocked on submit');
+  assert(isValidWeightInput(NaN) === false, 'Direct input: NaN is blocked on submit');
+  assert(isValidWeightInput('abc') === false, 'Direct input: invalid text is blocked on submit');
+  assert(isValidWeightInput(Infinity) === false, 'Direct input: Infinity is blocked on submit');
 
   return results;
 }
