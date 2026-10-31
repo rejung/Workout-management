@@ -60,6 +60,38 @@ function makeRunningSession(opts: {
   });
 }
 
+function makeCanonicalRunningSession(opts: {
+  readonly logId?: string;
+  readonly date: string;
+  readonly startTime?: string;
+  readonly exerciseName?: string;
+  readonly distanceKm?: number;
+  readonly durationSeconds?: number;
+  readonly paceSecondsPerKm?: number;
+}): CanonicalRunningSession {
+  return Object.freeze({
+    logId: opts.logId,
+    date: opts.date,
+    startTime: opts.startTime,
+    exerciseName: opts.exerciseName ?? 'Running',
+    metrics: Object.freeze({
+      distanceKm: opts.distanceKm,
+      durationSeconds: opts.durationSeconds,
+      paceSecondsPerKm: opts.paceSecondsPerKm,
+      sourceFormat: 'explicit-cardio-fields',
+      provenance: Object.freeze({
+        distance: 'explicit',
+        duration: 'explicit',
+        distanceLegacyConflict: false,
+        durationLegacyConflict: false,
+        hasLegacyConflict: false,
+      }),
+      sourceConfidence: 'high' as const,
+      runIntent: 'unknown' as const,
+    }),
+  });
+}
+
 const emptyResidualStates: AllDimensionResidualStates = Object.freeze({
   'knee-dominant-lower-body': {
     dimension: 'knee-dominant-lower-body',
@@ -773,6 +805,329 @@ export function runAggregationTestSuite(): readonly AggregationTestResult[] {
       details: passed
         ? 'Future session correctly excluded from recent training context.'
         : `Future leakage detected: recentSessionCount=${recent.recentSessionCount}, lastDate=${recent.lastTrainingDate}`,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Test Boundary 1: Both IDs missing -> preserved independently
+  // -------------------------------------------------------------------------
+  {
+    const runInput = makeRunningSession({
+      sourceLogId: '',
+      date: '2026-08-15',
+      startTime: '07:00',
+      distanceKm: 5.0,
+      durationSeconds: 1500,
+    });
+    const canonRun = makeCanonicalRunningSession({
+      logId: '',
+      date: '2026-08-15',
+      startTime: '07:00',
+      distanceKm: 5.0,
+      durationSeconds: 1500,
+    });
+
+    const recent = deriveRecentTrainingContext([runInput], evalContext, [canonRun]);
+    const demand = deriveSystemicTrainingDemandContext([runInput], evalContext, recent, [canonRun]);
+
+    const passed =
+      recent.recentSessionCount === 2 &&
+      demand.cardioExposure.cardioSessionCount === 2 &&
+      Math.abs(demand.cardioExposure.totalDistanceKm - 10.0) < 1e-4 &&
+      demand.cardioExposure.totalDurationSeconds === 3000;
+
+    results.push({
+      id: 'BOUNDARY_BOTH_IDS_MISSING',
+      description: 'Both original IDs missing/empty preserves sessions independently without arbitrary merging',
+      passed,
+      details: passed
+        ? 'Correctly preserved both representations as 2 independent sessions.'
+        : `Failed: sessions=${recent.recentSessionCount}, cardioCount=${demand.cardioExposure.cardioSessionCount}, km=${demand.cardioExposure.totalDistanceKm}, sec=${demand.cardioExposure.totalDurationSeconds}`,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Test Boundary 2: One ID missing -> preserved independently
+  // -------------------------------------------------------------------------
+  {
+    // Subcase 2a: runInput has ID, canonRun lacks ID
+    const runInputA = makeRunningSession({
+      sourceLogId: 'run-input-only',
+      date: '2026-08-15',
+      distanceKm: 4.0,
+      durationSeconds: 1200,
+    });
+    const canonRunA = makeCanonicalRunningSession({
+      logId: '',
+      date: '2026-08-15',
+      distanceKm: 4.0,
+      durationSeconds: 1200,
+    });
+
+    const recentA = deriveRecentTrainingContext([runInputA], evalContext, [canonRunA]);
+    const demandA = deriveSystemicTrainingDemandContext([runInputA], evalContext, recentA, [canonRunA]);
+
+    // Subcase 2b: runInput lacks ID, canonRun has ID
+    const runInputB = makeRunningSession({
+      sourceLogId: '',
+      date: '2026-08-15',
+      distanceKm: 3.0,
+      durationSeconds: 900,
+    });
+    const canonRunB = makeCanonicalRunningSession({
+      logId: 'canon-only',
+      date: '2026-08-15',
+      distanceKm: 3.0,
+      durationSeconds: 900,
+    });
+
+    const recentB = deriveRecentTrainingContext([runInputB], evalContext, [canonRunB]);
+    const demandB = deriveSystemicTrainingDemandContext([runInputB], evalContext, recentB, [canonRunB]);
+
+    const passed =
+      recentA.recentSessionCount === 2 &&
+      demandA.cardioExposure.cardioSessionCount === 2 &&
+      Math.abs(demandA.cardioExposure.totalDistanceKm - 8.0) < 1e-4 &&
+      demandA.cardioExposure.totalDurationSeconds === 2400 &&
+      recentB.recentSessionCount === 2 &&
+      demandB.cardioExposure.cardioSessionCount === 2 &&
+      Math.abs(demandB.cardioExposure.totalDistanceKm - 6.0) < 1e-4 &&
+      demandB.cardioExposure.totalDurationSeconds === 1800;
+
+    results.push({
+      id: 'BOUNDARY_ONE_ID_MISSING',
+      description: 'One ID missing preserves sessions independently without arbitrary matching',
+      passed,
+      details: passed
+        ? 'Both subcases correctly preserved 2 independent sessions.'
+        : `Failed: A=(sessions=${recentA.recentSessionCount}, km=${demandA.cardioExposure.totalDistanceKm}), B=(sessions=${recentB.recentSessionCount}, km=${demandB.cardioExposure.totalDistanceKm})`,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Test Boundary 3: Different IDs -> preserved independently
+  // -------------------------------------------------------------------------
+  {
+    const runInput = makeRunningSession({
+      sourceLogId: 'run-id-alpha',
+      date: '2026-08-15',
+      startTime: '09:00',
+      distanceKm: 5.0,
+      durationSeconds: 1500,
+    });
+    const canonRun = makeCanonicalRunningSession({
+      logId: 'run-id-beta',
+      date: '2026-08-15',
+      startTime: '09:00',
+      distanceKm: 5.0,
+      durationSeconds: 1500,
+    });
+
+    const recent = deriveRecentTrainingContext([runInput], evalContext, [canonRun]);
+    const demand = deriveSystemicTrainingDemandContext([runInput], evalContext, recent, [canonRun]);
+
+    const passed =
+      recent.recentSessionCount === 2 &&
+      demand.cardioExposure.cardioSessionCount === 2 &&
+      Math.abs(demand.cardioExposure.totalDistanceKm - 10.0) < 1e-4 &&
+      demand.cardioExposure.totalDurationSeconds === 3000;
+
+    results.push({
+      id: 'BOUNDARY_DIFFERENT_IDS',
+      description: 'Different IDs on same date/time/metrics preserved independently',
+      passed,
+      details: passed
+        ? 'Correctly kept distinct IDs as 2 separate sessions.'
+        : `Failed: sessions=${recent.recentSessionCount}, km=${demand.cardioExposure.totalDistanceKm}`,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Test Boundary 4: Same ID, one side metric missing -> preserves other side valid metric
+  // -------------------------------------------------------------------------
+  {
+    // Subcase 4a: runInput missing distanceKm, canonRun has distanceKm
+    const runInputA = makeRunningSession({
+      sourceLogId: 'shared-run-1',
+      date: '2026-08-15',
+      startTime: '07:30',
+      distanceKm: undefined,
+      durationSeconds: 1200,
+    });
+    const canonRunA = makeCanonicalRunningSession({
+      logId: 'shared-run-1',
+      date: '2026-08-15',
+      startTime: '07:30',
+      distanceKm: 4.0,
+      durationSeconds: 1200,
+    });
+
+    const recentA = deriveRecentTrainingContext([runInputA], evalContext, [canonRunA]);
+    const demandA = deriveSystemicTrainingDemandContext([runInputA], evalContext, recentA, [canonRunA]);
+
+    // Subcase 4b: runInput has durationSeconds, canonRun missing durationSeconds
+    const runInputB = makeRunningSession({
+      sourceLogId: 'shared-run-2',
+      date: '2026-08-15',
+      startTime: '10:00',
+      distanceKm: 6.0,
+      durationSeconds: 1800,
+    });
+    const canonRunB = makeCanonicalRunningSession({
+      logId: 'shared-run-2',
+      date: '2026-08-15',
+      startTime: '10:00',
+      distanceKm: 6.0,
+      durationSeconds: undefined,
+    });
+
+    const recentB = deriveRecentTrainingContext([runInputB], evalContext, [canonRunB]);
+    const demandB = deriveSystemicTrainingDemandContext([runInputB], evalContext, recentB, [canonRunB]);
+
+    const passed =
+      recentA.recentSessionCount === 1 &&
+      demandA.cardioExposure.cardioSessionCount === 1 &&
+      Math.abs(demandA.cardioExposure.totalDistanceKm - 4.0) < 1e-4 &&
+      demandA.cardioExposure.totalDurationSeconds === 1200 &&
+      recentB.recentSessionCount === 1 &&
+      demandB.cardioExposure.cardioSessionCount === 1 &&
+      Math.abs(demandB.cardioExposure.totalDistanceKm - 6.0) < 1e-4 &&
+      demandB.cardioExposure.totalDurationSeconds === 1800;
+
+    results.push({
+      id: 'BOUNDARY_SAME_ID_ONE_SIDE_METRIC_MISSING',
+      description: 'Same ID with one side missing measurement preserves the other side valid value',
+      passed,
+      details: passed
+        ? 'Both subcases correctly preserved missing measurement from the other representation.'
+        : `Failed: A=(km=${demandA.cardioExposure.totalDistanceKm}, sec=${demandA.cardioExposure.totalDurationSeconds}), B=(km=${demandB.cardioExposure.totalDistanceKm}, sec=${demandB.cardioExposure.totalDurationSeconds})`,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Test Boundary 5: Same ID, distance and duration each only present on one side -> preserves both
+  // -------------------------------------------------------------------------
+  {
+    const runInput = makeRunningSession({
+      sourceLogId: 'shared-split-metrics',
+      date: '2026-08-15',
+      startTime: '08:00',
+      distanceKm: 5.0,
+      durationSeconds: undefined,
+    });
+    const canonRun = makeCanonicalRunningSession({
+      logId: 'shared-split-metrics',
+      date: '2026-08-15',
+      startTime: '08:00',
+      distanceKm: undefined,
+      durationSeconds: 1500,
+    });
+
+    const recent = deriveRecentTrainingContext([runInput], evalContext, [canonRun]);
+    const demand = deriveSystemicTrainingDemandContext([runInput], evalContext, recent, [canonRun]);
+
+    const passed =
+      recent.recentSessionCount === 1 &&
+      demand.cardioExposure.cardioSessionCount === 1 &&
+      Math.abs(demand.cardioExposure.totalDistanceKm - 5.0) < 1e-4 &&
+      demand.cardioExposure.totalDurationSeconds === 1500;
+
+    results.push({
+      id: 'BOUNDARY_COMPLEMENTARY_METRICS',
+      description: 'Distance only on input and duration only on canonical preserves both valid values',
+      passed,
+      details: passed
+        ? 'Complementary distance and duration correctly unified into single session.'
+        : `Failed: sessions=${recent.recentSessionCount}, km=${demand.cardioExposure.totalDistanceKm}, sec=${demand.cardioExposure.totalDurationSeconds}`,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Test Boundary 6: Distinguish 0 from undefined
+  // -------------------------------------------------------------------------
+  {
+    // Part 6a: 0 is valid and preserved when other side is undefined
+    const runInputZeroDist = makeRunningSession({
+      sourceLogId: 'run-zero-preserved',
+      date: '2026-08-15',
+      startTime: '08:00',
+      distanceKm: 0,
+      durationSeconds: 600,
+    });
+    const canonRunZeroDist = makeCanonicalRunningSession({
+      logId: 'run-zero-preserved',
+      date: '2026-08-15',
+      startTime: '08:00',
+      distanceKm: undefined,
+      durationSeconds: 600,
+    });
+
+    const recent6a = deriveRecentTrainingContext([runInputZeroDist], evalContext, [canonRunZeroDist]);
+    const demand6a = deriveSystemicTrainingDemandContext([runInputZeroDist], evalContext, recent6a, [canonRunZeroDist]);
+
+    const passed6a =
+      recent6a.recentSessionCount === 1 &&
+      demand6a.cardioExposure.cardioSessionCount === 1 &&
+      demand6a.cardioExposure.totalDistanceKm === 0 &&
+      demand6a.cardioExposure.totalDurationSeconds === 600;
+
+    // Part 6b: 0 is not treated as missing, so 0 vs 5.0 is a conflict and rejects matching
+    const runInputConflictDist = makeRunningSession({
+      sourceLogId: 'run-zero-conflict',
+      date: '2026-08-15',
+      startTime: '08:00',
+      distanceKm: 0,
+      durationSeconds: 600,
+    });
+    const canonRunConflictDist = makeCanonicalRunningSession({
+      logId: 'run-zero-conflict',
+      date: '2026-08-15',
+      startTime: '08:00',
+      distanceKm: 5.0,
+      durationSeconds: 600,
+    });
+
+    const recent6b = deriveRecentTrainingContext([runInputConflictDist], evalContext, [canonRunConflictDist]);
+    const demand6b = deriveSystemicTrainingDemandContext([runInputConflictDist], evalContext, recent6b, [canonRunConflictDist]);
+
+    // Since they conflict on distance (0 vs 5.0), they do NOT match 1:1, so both running items are preserved separately
+    // Because they share the same sourceLogId, both items are retained within that log, total distance = 0 + 5.0 = 5.0, total duration = 1200
+    const passed6b =
+      Math.abs(demand6b.cardioExposure.totalDistanceKm - 5.0) < 1e-4 &&
+      demand6b.cardioExposure.totalDurationSeconds === 1200;
+
+    // Part 6c: 0 duration vs 600 duration is a conflict and rejects matching
+    const runInputConflictDur = makeRunningSession({
+      sourceLogId: 'run-dur-conflict',
+      date: '2026-08-15',
+      startTime: '08:00',
+      distanceKm: 5.0,
+      durationSeconds: 0,
+    });
+    const canonRunConflictDur = makeCanonicalRunningSession({
+      logId: 'run-dur-conflict',
+      date: '2026-08-15',
+      startTime: '08:00',
+      distanceKm: 5.0,
+      durationSeconds: 600,
+    });
+
+    const recent6c = deriveRecentTrainingContext([runInputConflictDur], evalContext, [canonRunConflictDur]);
+    const demand6c = deriveSystemicTrainingDemandContext([runInputConflictDur], evalContext, recent6c, [canonRunConflictDur]);
+
+    const passed6c =
+      Math.abs(demand6c.cardioExposure.totalDistanceKm - 10.0) < 1e-4 &&
+      demand6c.cardioExposure.totalDurationSeconds === 600;
+
+    const passed = passed6a && passed6b && passed6c;
+
+    results.push({
+      id: 'BOUNDARY_ZERO_VS_UNDEFINED',
+      description: '0 is distinguished from undefined: preserved when valid, causes conflict rejection when conflicting with positive value',
+      passed,
+      details: passed
+        ? '0 properly distinguished from undefined across preservation and conflict detection.'
+        : `Failed: 6a=${passed6a}, 6b=${passed6b}, 6c=${passed6c}`,
     });
   }
 

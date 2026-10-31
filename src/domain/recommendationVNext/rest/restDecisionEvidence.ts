@@ -139,8 +139,12 @@ function buildUnifiedWorkoutSessions(
     for (let i = 0; i < canonRuns.length; i++) {
       if (claimedCanonIndices.has(i)) continue;
       const r = canonRuns[i];
-      // If both have non-empty IDs, they must match
-      if (r.logId && s.sourceLogId && r.logId !== s.sourceLogId) continue;
+
+      // Both must have non-empty original identifiers and strictly match
+      const rLogId = r.logId?.trim();
+      const sLogId = s.sourceLogId?.trim();
+      if (!rLogId || !sLogId || rLogId !== sLogId) continue;
+
       if (r.date !== s.date) continue;
       if ((r.startTime ?? '') !== (s.startTime ?? '')) continue;
       if (
@@ -163,18 +167,44 @@ function buildUnifiedWorkoutSessions(
 
     if (matchedIndex !== -1) {
       claimedCanonIndices.add(matchedIndex);
-    }
+      const r = canonRuns[matchedIndex];
 
-    unifiedRuns.push({
-      logId: s.sourceLogId,
-      date: s.date,
-      startTime: s.startTime,
-      exerciseName: s.exerciseName || 'Running',
-      distanceKm: s.distanceKm,
-      durationSeconds: s.durationSeconds,
-      paceSecondsPerKm: s.paceSecondsPerKm,
-      temporalResult: tempResult,
-    });
+      // Preserve valid measurements from either representation when only one side provides it
+      const distanceKm =
+        s.distanceKm !== undefined ? s.distanceKm : r.metrics.distanceKm;
+      const durationSeconds =
+        s.durationSeconds !== undefined ? s.durationSeconds : r.metrics.durationSeconds;
+      const paceSecondsPerKm =
+        s.paceSecondsPerKm !== undefined
+          ? s.paceSecondsPerKm
+          : r.metrics.paceSecondsPerKm !== undefined
+          ? r.metrics.paceSecondsPerKm
+          : distanceKm !== undefined && durationSeconds !== undefined && distanceKm > 0
+          ? durationSeconds / distanceKm
+          : undefined;
+
+      unifiedRuns.push({
+        logId: s.sourceLogId,
+        date: s.date,
+        startTime: s.startTime ?? r.startTime,
+        exerciseName: s.exerciseName || r.exerciseName || 'Running',
+        distanceKm,
+        durationSeconds,
+        paceSecondsPerKm,
+        temporalResult: tempResult,
+      });
+    } else {
+      unifiedRuns.push({
+        logId: s.sourceLogId,
+        date: s.date,
+        startTime: s.startTime,
+        exerciseName: s.exerciseName || 'Running',
+        distanceKm: s.distanceKm,
+        durationSeconds: s.durationSeconds,
+        paceSecondsPerKm: s.paceSecondsPerKm,
+        temporalResult: tempResult,
+      });
+    }
   }
 
   // Any canonical running sessions from runningSessions that weren't claimed
@@ -215,7 +245,8 @@ function buildUnifiedWorkoutSessions(
   for (const s of allHistoricalSessions) {
     if (s.kind !== 'strength') continue;
     const tempResult = evaluateSessionTemporalEligibility(s, evaluationContext);
-    const key = s.sourceLogId ? `log_${s.sourceLogId}` : `anon_str_${++anonIndex}`;
+    const sLogId = s.sourceLogId?.trim();
+    const key = sLogId ? `log_${sLogId}` : `anon_str_${++anonIndex}`;
 
     let sess = sessionMap.get(key);
     if (!sess) {
@@ -262,7 +293,8 @@ function buildUnifiedWorkoutSessions(
 
   // Add running items
   for (const run of unifiedRuns) {
-    const key = run.logId ? `log_${run.logId}` : `anon_run_${++anonIndex}`;
+    const runLogId = run.logId?.trim();
+    const key = runLogId ? `log_${runLogId}` : `anon_run_${++anonIndex}`;
 
     let sess = sessionMap.get(key);
     if (!sess) {
