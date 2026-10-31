@@ -11,6 +11,7 @@ import { formatSetRecordsList } from '../utils/formatter';
 import { getSortedExercises } from '../utils/sorting';
 import { motion } from 'motion/react';
 import { generateUUID } from '../utils/workoutEngine';
+import { isValidWeightInput } from '../domain/weightStepPolicy';
 
 interface WorkoutFormProps {
   exercises: Exercise[];
@@ -270,13 +271,18 @@ export default function WorkoutForm({
           const set = ae.sets[setIdx];
           const rawWeight = set.weight as unknown;
 
-          if (rawWeight === '' || rawWeight === null || rawWeight === undefined || (typeof rawWeight === 'string' && rawWeight.trim() === '')) {
+          const isEmpty =
+            rawWeight === '' ||
+            rawWeight === null ||
+            rawWeight === undefined ||
+            (typeof rawWeight === 'string' && rawWeight.trim() === '');
+
+          if (isEmpty) {
             showAlert(`${ae.exerciseName} ${setIdx + 1}세트의 중량을 입력해 주세요.`, '일지 저장 오류');
             return;
           }
 
-          const numWeight = Number(rawWeight);
-          if (isNaN(numWeight) || !isFinite(numWeight) || numWeight < 0) {
+          if (!isValidWeightInput(rawWeight)) {
             showAlert(`${ae.exerciseName} ${setIdx + 1}세트에 유효하지 않은 중량이 입력되었습니다.`, '일지 저장 오류');
             return;
           }

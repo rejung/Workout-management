@@ -32,6 +32,24 @@ export type ExerciseLike = Partial<Exercise> & {
   [key: string]: unknown;
 };
 
+export type WeightStepResolutionTier =
+  | 'EQUIPMENT_METADATA'
+  | 'CANONICAL_ID'
+  | 'NAME_FALLBACK'
+  | 'DEFAULT';
+
+export type ResolvedEquipmentType = 'DUMBBELL' | 'CABLE' | 'BARBELL' | 'OTHER';
+
+export interface WeightStepResolution {
+  isDumbbell: boolean;
+  isCable?: boolean;
+  isBarbell?: boolean;
+  resolvedEquipment?: ResolvedEquipmentType;
+  step: number;
+  source: WeightStepResolutionTier;
+  conflict?: string;
+}
+
 /**
  * Known canonical barbell exercise IDs in the system.
  */
@@ -64,12 +82,10 @@ const CANONICAL_CABLE_IDS = new Set([
 function checkDumbbellNameOrKeyword(input: string): boolean {
   const norm = input.toLowerCase().replace(/\s+/g, '');
 
-  // Keyword matches for dumbbell in Korean and English
   if (norm.includes('덤벨') || norm.includes('dumbbell')) {
     return true;
   }
 
-  // Known canonical exercises that are inherently dumbbell movements
   if (norm.includes('해머컬') || norm.includes('hammercurl')) {
     return true;
   }
@@ -87,7 +103,6 @@ function checkCableNameOrKeyword(input: string): boolean {
     return true;
   }
 
-  // Canonical movements that are inherently cable exercises
   if (
     norm.includes('랫풀다운') ||
     norm.includes('latpulldown') ||
@@ -133,7 +148,6 @@ function checkBarbellNameOrKeyword(input: string): boolean {
     return false;
   }
 
-  // Barbell explicit keywords
   if (norm.includes('바벨') || norm.includes('barbell')) {
     return true;
   }
@@ -156,187 +170,195 @@ function checkBarbellNameOrKeyword(input: string): boolean {
   return false;
 }
 
+export interface EquipmentClassificationResult {
+  equipment: ResolvedEquipmentType;
+  source: WeightStepResolutionTier;
+  conflict?: string;
+}
+
+/**
+ * Common, single source of truth classification engine.
+ *
+ * Strict evaluation order applied exactly once:
+ * Tier 1: Explicit equipment/equipmentType metadata (overrides ID and name)
+ * Tier 2: Definite canonical ID (overrides name keywords when metadata is absent)
+ * Tier 3: Name / fallbackName keywords
+ * Tier 4: DEFAULT (Machine, unspecified, or unknown equipment -> 'OTHER')
+ */
+export function resolveEquipmentClassification(
+  exercise?: ExerciseLike | string | null,
+  fallbackName?: string
+): EquipmentClassificationResult {
+  if (!exercise && !fallbackName) {
+    return {
+      equipment: 'OTHER',
+      source: 'DEFAULT',
+    };
+  }
+
+  const isString = typeof exercise === 'string';
+  const exObj = exercise && typeof exercise === 'object' ? exercise : null;
+
+  const rawEquipment = (exObj ? (exObj.equipment ?? exObj.equipmentType) : undefined) as unknown;
+  const hasStructuredEquipment =
+    typeof rawEquipment === 'string' && rawEquipment.trim().length > 0;
+
+  const id = (exObj ? (exObj.id || exObj.exerciseId || '') : '').toLowerCase().trim();
+  const canonicalName = exObj?.canonicalName || '';
+  const name = (exObj ? (exObj.name || exObj.exerciseName) : '') || (isString ? exercise : '') || fallbackName || '';
+
+  // Tier 1: Explicit equipment/equipmentType metadata
+  if (hasStructuredEquipment) {
+    const eq = (rawEquipment as string).trim().toLowerCase();
+    let equipment: ResolvedEquipmentType = 'OTHER';
+
+    if (eq === 'cable' || eq === '케이블') {
+      equipment = 'CABLE';
+    } else if (eq === 'dumbbell' || eq === '덤벨') {
+      equipment = 'DUMBBELL';
+    } else if (eq === 'barbell' || eq === '바벨') {
+      equipment = 'BARBELL';
+    } else {
+      equipment = 'OTHER';
+    }
+
+    // Diagnostics conflict check
+    const nameOrIdSuggestsDumbbell =
+      (id && (id.includes('dumbbell') || id.includes('덤벨'))) ||
+      (canonicalName && checkDumbbellNameOrKeyword(canonicalName)) ||
+      (name && checkDumbbellNameOrKeyword(name));
+
+    const nameOrIdSuggestsCable =
+      (id && (id.includes('cable') || id.includes('케이블') || CANONICAL_CABLE_IDS.has(id))) ||
+      (canonicalName && checkCableNameOrKeyword(canonicalName)) ||
+      (name && checkCableNameOrKeyword(name));
+
+    const nameOrIdSuggestsBarbell =
+      (id && (id.includes('barbell') || id.includes('바벨') || CANONICAL_BARBELL_IDS.has(id))) ||
+      (canonicalName && checkBarbellNameOrKeyword(canonicalName)) ||
+      (name && checkBarbellNameOrKeyword(name));
+
+    let conflict: string | undefined;
+    if (equipment === 'DUMBBELL' && !nameOrIdSuggestsDumbbell) {
+      conflict = `Equipment is DUMBBELL, but exercise name/ID "${name || id}" has no dumbbell keyword.`;
+    } else if (equipment !== 'DUMBBELL' && nameOrIdSuggestsDumbbell) {
+      conflict = `Equipment is "${rawEquipment}", but exercise name/ID "${name || id}" contains dumbbell keyword (metadata overrides).`;
+    } else if (equipment === 'CABLE' && !nameOrIdSuggestsCable) {
+      conflict = `Equipment is CABLE, but exercise name/ID "${name || id}" has no cable keyword.`;
+    } else if (equipment !== 'CABLE' && nameOrIdSuggestsCable) {
+      conflict = `Equipment is "${rawEquipment}", but exercise name/ID "${name || id}" contains cable keyword (metadata overrides).`;
+    } else if (equipment === 'BARBELL' && !nameOrIdSuggestsBarbell) {
+      conflict = `Equipment is BARBELL, but exercise name/ID "${name || id}" has no barbell keyword.`;
+    } else if (equipment !== 'BARBELL' && nameOrIdSuggestsBarbell) {
+      conflict = `Equipment is "${rawEquipment}", but exercise name/ID "${name || id}" contains barbell keyword (metadata overrides).`;
+    }
+
+    return {
+      equipment,
+      source: 'EQUIPMENT_METADATA',
+      conflict,
+    };
+  }
+
+  // Tier 2: Canonical ID (takes priority over name keywords when metadata is absent)
+  const targetId = id || (isString ? exercise.toLowerCase().trim() : '');
+  if (targetId) {
+    if (
+      targetId.includes('cable') ||
+      targetId.includes('케이블') ||
+      CANONICAL_CABLE_IDS.has(targetId)
+    ) {
+      return {
+        equipment: 'CABLE',
+        source: 'CANONICAL_ID',
+      };
+    }
+
+    if (targetId.includes('dumbbell') || targetId.includes('덤벨')) {
+      return {
+        equipment: 'DUMBBELL',
+        source: 'CANONICAL_ID',
+      };
+    }
+
+    if (
+      !targetId.includes('machine') &&
+      !targetId.includes('머신') &&
+      (targetId.includes('barbell') || targetId.includes('바벨') || CANONICAL_BARBELL_IDS.has(targetId))
+    ) {
+      return {
+        equipment: 'BARBELL',
+        source: 'CANONICAL_ID',
+      };
+    }
+  }
+
+  // Tier 3: Name / Fallback keywords
+  if (
+    (canonicalName && checkCableNameOrKeyword(canonicalName)) ||
+    (name && checkCableNameOrKeyword(name))
+  ) {
+    return {
+      equipment: 'CABLE',
+      source: 'NAME_FALLBACK',
+    };
+  }
+
+  if (
+    (canonicalName && checkDumbbellNameOrKeyword(canonicalName)) ||
+    (name && checkDumbbellNameOrKeyword(name))
+  ) {
+    return {
+      equipment: 'DUMBBELL',
+      source: 'NAME_FALLBACK',
+    };
+  }
+
+  if (
+    (canonicalName && checkBarbellNameOrKeyword(canonicalName)) ||
+    (name && checkBarbellNameOrKeyword(name))
+  ) {
+    return {
+      equipment: 'BARBELL',
+      source: 'NAME_FALLBACK',
+    };
+  }
+
+  // Tier 4: DEFAULT (Machine, unspecified, etc.)
+  return {
+    equipment: 'OTHER',
+    source: 'DEFAULT',
+  };
+}
+
 /**
  * Determines whether an exercise uses dumbbells.
- *
- * Priority 1: Structured equipment metadata (equipment / equipmentType)
- * Priority 2: Canonical exercise metadata & known dumbbell identifiers
- * Priority 3: Keyword heuristic fallback on normalized name / canonicalName / id
  */
 export function isDumbbellExercise(
   exercise?: ExerciseLike | string | null,
   fallbackName?: string
 ): boolean {
-  if (!exercise && !fallbackName) {
-    return false;
-  }
-
-  // If passed as a plain string (exercise name or ID)
-  if (typeof exercise === 'string') {
-    return checkDumbbellNameOrKeyword(exercise);
-  }
-
-  const exObj = exercise && typeof exercise === 'object' ? exercise : null;
-  const rawEquipment = (exObj ? (exObj.equipment ?? exObj.equipmentType) : undefined) as unknown;
-  if (typeof rawEquipment === 'string' && rawEquipment.trim().length > 0) {
-    const eq = rawEquipment.trim().toLowerCase();
-    if (eq === 'dumbbell' || eq === '덤벨') {
-      return true;
-    }
-    // Any explicit non-dumbbell equipment metadata explicitly overrides name heuristics
-    return false;
-  }
-
-  // Priority 2 & 3: Canonical metadata & Exercise identification
-  const id = exObj ? (exObj.id || exObj.exerciseId || '') : '';
-  const canonicalName = exObj ? (exObj.canonicalName || '') : '';
-  const name = (exObj ? (exObj.name || exObj.exerciseName) : '') || fallbackName || '';
-
-  // Check ID for dumbbell indicator
-  if (id) {
-    const lowerId = id.toLowerCase();
-    if (lowerId.includes('dumbbell') || lowerId.includes('덤벨')) {
-      return true;
-    }
-  }
-
-  // Check canonicalName
-  if (canonicalName && checkDumbbellNameOrKeyword(canonicalName)) {
-    return true;
-  }
-
-  // Check name or fallbackName
-  if (name && checkDumbbellNameOrKeyword(name)) {
-    return true;
-  }
-
-  return false;
+  return resolveEquipmentClassification(exercise, fallbackName).equipment === 'DUMBBELL';
 }
 
 /**
  * Determines whether an exercise is a cable exercise.
- *
- * Priority 1: Structured equipment metadata (equipment / equipmentType)
- * Priority 2: Canonical exercise metadata & known cable identifiers
- * Priority 3: Keyword heuristic fallback on normalized name / canonicalName / id
  */
 export function isCableExercise(
   exercise?: ExerciseLike | string | null,
   fallbackName?: string
 ): boolean {
-  if (!exercise && !fallbackName) {
-    return false;
-  }
-
-  if (typeof exercise === 'string') {
-    return checkCableNameOrKeyword(exercise);
-  }
-
-  const exObj = exercise && typeof exercise === 'object' ? exercise : null;
-  const rawEquipment = (exObj ? (exObj.equipment ?? exObj.equipmentType) : undefined) as unknown;
-  if (typeof rawEquipment === 'string' && rawEquipment.trim().length > 0) {
-    const eq = rawEquipment.trim().toLowerCase();
-    if (eq === 'cable' || eq === '케이블') {
-      return true;
-    }
-    // Any explicit non-cable equipment metadata explicitly overrides name heuristics
-    return false;
-  }
-
-  // Priority 2 & 3: ID, canonicalName, name
-  const id = exObj ? (exObj.id || exObj.exerciseId || '') : '';
-  const canonicalName = exObj ? (exObj.canonicalName || '') : '';
-  const name = (exObj ? (exObj.name || exObj.exerciseName) : '') || fallbackName || '';
-
-  if (id) {
-    const lowerId = id.toLowerCase();
-    if (
-      lowerId.includes('cable') ||
-      lowerId.includes('케이블') ||
-      CANONICAL_CABLE_IDS.has(lowerId)
-    ) {
-      return true;
-    }
-  }
-
-  if (canonicalName && checkCableNameOrKeyword(canonicalName)) {
-    return true;
-  }
-
-  if (name && checkCableNameOrKeyword(name)) {
-    return true;
-  }
-
-  return false;
+  return resolveEquipmentClassification(exercise, fallbackName).equipment === 'CABLE';
 }
 
 /**
  * Determines whether an exercise uses a barbell.
- *
- * Priority 1: Structured equipment metadata (equipment / equipmentType)
- * Priority 2: Canonical exercise metadata & known barbell identifiers
- * Priority 3: Keyword heuristic fallback on normalized name / canonicalName / id
  */
 export function isBarbellExercise(
   exercise?: ExerciseLike | string | null,
   fallbackName?: string
 ): boolean {
-  if (!exercise && !fallbackName) {
-    return false;
-  }
-
-  if (typeof exercise === 'string') {
-    return checkBarbellNameOrKeyword(exercise);
-  }
-
-  const exObj = exercise && typeof exercise === 'object' ? exercise : null;
-  const rawEquipment = (exObj ? (exObj.equipment ?? exObj.equipmentType) : undefined) as unknown;
-  if (typeof rawEquipment === 'string' && rawEquipment.trim().length > 0) {
-    const eq = rawEquipment.trim().toLowerCase();
-    if (eq === 'barbell' || eq === '바벨') {
-      return true;
-    }
-    // Any explicit non-barbell equipment metadata explicitly overrides name heuristics
-    return false;
-  }
-
-  // Priority 2 & 3: ID, canonicalName, name
-  const id = exObj ? (exObj.id || exObj.exerciseId || '') : '';
-  const canonicalName = exObj ? (exObj.canonicalName || '') : '';
-  const name = (exObj ? (exObj.name || exObj.exerciseName) : '') || fallbackName || '';
-
-  if (id) {
-    const lowerId = id.toLowerCase();
-    // Exclude if ID contains explicit non-barbell indicators
-    if (
-      lowerId.includes('dumbbell') ||
-      lowerId.includes('덤벨') ||
-      lowerId.includes('cable') ||
-      lowerId.includes('케이블') ||
-      lowerId.includes('machine') ||
-      lowerId.includes('머신')
-    ) {
-      return false;
-    }
-
-    if (
-      lowerId.includes('barbell') ||
-      lowerId.includes('바벨') ||
-      CANONICAL_BARBELL_IDS.has(lowerId)
-    ) {
-      return true;
-    }
-  }
-
-  if (canonicalName && checkBarbellNameOrKeyword(canonicalName)) {
-    return true;
-  }
-
-  if (name && checkBarbellNameOrKeyword(name)) {
-    return true;
-  }
-
-  return false;
+  return resolveEquipmentClassification(exercise, fallbackName).equipment === 'BARBELL';
 }
 
 /**
@@ -350,34 +372,17 @@ export function getWeightStep(
   exercise?: ExerciseLike | string | null,
   fallbackName?: string
 ): number {
-  if (isCableExercise(exercise, fallbackName)) {
-    return CABLE_WEIGHT_STEP;
+  const { equipment } = resolveEquipmentClassification(exercise, fallbackName);
+  switch (equipment) {
+    case 'CABLE':
+      return CABLE_WEIGHT_STEP;
+    case 'DUMBBELL':
+      return DUMBBELL_WEIGHT_STEP;
+    case 'BARBELL':
+      return BARBELL_WEIGHT_STEP;
+    default:
+      return DEFAULT_WEIGHT_STEP;
   }
-  if (isDumbbellExercise(exercise, fallbackName)) {
-    return DUMBBELL_WEIGHT_STEP;
-  }
-  if (isBarbellExercise(exercise, fallbackName)) {
-    return BARBELL_WEIGHT_STEP;
-  }
-  return DEFAULT_WEIGHT_STEP;
-}
-
-export type WeightStepResolutionTier =
-  | 'EQUIPMENT_METADATA'
-  | 'CANONICAL_ID'
-  | 'NAME_FALLBACK'
-  | 'DEFAULT';
-
-export type ResolvedEquipmentType = 'DUMBBELL' | 'CABLE' | 'BARBELL' | 'OTHER';
-
-export interface WeightStepResolution {
-  isDumbbell: boolean;
-  isCable?: boolean;
-  isBarbell?: boolean;
-  resolvedEquipment?: ResolvedEquipmentType;
-  step: number;
-  source: WeightStepResolutionTier;
-  conflict?: string;
 }
 
 /**
@@ -388,189 +393,47 @@ export function inspectWeightStepResolution(
   exercise?: ExerciseLike | string | null,
   fallbackName?: string
 ): WeightStepResolution {
-  if (!exercise && !fallbackName) {
-    return {
-      isDumbbell: false,
-      isCable: false,
-      isBarbell: false,
-      resolvedEquipment: 'OTHER',
-      step: DEFAULT_WEIGHT_STEP,
-      source: 'DEFAULT',
-    };
-  }
-
-  if (typeof exercise === 'string') {
-    const isCable = isCableExercise(exercise);
-    const isDb = isDumbbellExercise(exercise);
-    const isBb = isBarbellExercise(exercise);
-    const step = getWeightStep(exercise);
-    const source: WeightStepResolutionTier = (isCable || isDb || isBb) ? 'NAME_FALLBACK' : 'DEFAULT';
-    return {
-      isDumbbell: isDb,
-      isCable,
-      isBarbell: isBb,
-      resolvedEquipment: isCable ? 'CABLE' : isDb ? 'DUMBBELL' : isBb ? 'BARBELL' : 'OTHER',
-      step,
-      source,
-    };
-  }
-
-  const exObj = exercise && typeof exercise === 'object' ? exercise : null;
-  const rawEquipment = (exObj ? (exObj.equipment ?? exObj.equipmentType) : undefined) as unknown;
-  const hasStructuredEquipment =
-    typeof rawEquipment === 'string' && rawEquipment.trim().length > 0;
-
-  const id = exObj ? (exObj.id || exObj.exerciseId || '') : '';
-  const canonicalName = exObj ? (exObj.canonicalName || '') : '';
-  const name = (exObj ? (exObj.name || exObj.exerciseName) : '') || fallbackName || '';
-
-  const nameOrIdSuggestsDumbbell =
-    (id && (id.toLowerCase().includes('dumbbell') || id.toLowerCase().includes('덤벨'))) ||
-    (canonicalName && checkDumbbellNameOrKeyword(canonicalName)) ||
-    (name && checkDumbbellNameOrKeyword(name));
-
-  const nameOrIdSuggestsCable =
-    (id && (id.toLowerCase().includes('cable') || id.toLowerCase().includes('케이블') || CANONICAL_CABLE_IDS.has(id.toLowerCase()))) ||
-    (canonicalName && checkCableNameOrKeyword(canonicalName)) ||
-    (name && checkCableNameOrKeyword(name));
-
-  const nameOrIdSuggestsBarbell =
-    (id && (id.toLowerCase().includes('barbell') || id.toLowerCase().includes('바벨') || CANONICAL_BARBELL_IDS.has(id.toLowerCase()))) ||
-    (canonicalName && checkBarbellNameOrKeyword(canonicalName)) ||
-    (name && checkBarbellNameOrKeyword(name));
-
-  if (hasStructuredEquipment) {
-    const eq = (rawEquipment as string).trim().toLowerCase();
-    const isDb = eq === 'dumbbell' || eq === '덤벨';
-    const isCable = eq === 'cable' || eq === '케이블';
-    const isBb = eq === 'barbell' || eq === '바벨';
-    const step = getWeightStep(exercise, fallbackName);
-
-    let conflict: string | undefined;
-    if (isDb && !nameOrIdSuggestsDumbbell) {
-      conflict = `Equipment is DUMBBELL, but exercise name/ID "${name || id}" has no dumbbell keyword.`;
-    } else if (!isDb && nameOrIdSuggestsDumbbell) {
-      conflict = `Equipment is "${rawEquipment}", but exercise name/ID "${name || id}" contains dumbbell keyword (metadata overrides).`;
-    } else if (isCable && !nameOrIdSuggestsCable) {
-      conflict = `Equipment is CABLE, but exercise name/ID "${name || id}" has no cable keyword.`;
-    } else if (!isCable && nameOrIdSuggestsCable) {
-      conflict = `Equipment is "${rawEquipment}", but exercise name/ID "${name || id}" contains cable keyword (metadata overrides).`;
-    } else if (isBb && !nameOrIdSuggestsBarbell) {
-      conflict = `Equipment is BARBELL, but exercise name/ID "${name || id}" has no barbell keyword.`;
-    } else if (!isBb && nameOrIdSuggestsBarbell) {
-      conflict = `Equipment is "${rawEquipment}", but exercise name/ID "${name || id}" contains barbell keyword (metadata overrides).`;
-    }
-
-    return {
-      isDumbbell: isDb,
-      isCable,
-      isBarbell: isBb,
-      resolvedEquipment: isCable ? 'CABLE' : isDb ? 'DUMBBELL' : isBb ? 'BARBELL' : 'OTHER',
-      step,
-      source: 'EQUIPMENT_METADATA',
-      conflict,
-    };
-  }
-
-  // Priority 2: Canonical ID
-  if (id) {
-    const lowerId = id.toLowerCase();
-    if (lowerId.includes('cable') || lowerId.includes('케이블') || CANONICAL_CABLE_IDS.has(lowerId)) {
-      return {
-        isDumbbell: false,
-        isCable: true,
-        isBarbell: false,
-        resolvedEquipment: 'CABLE',
-        step: CABLE_WEIGHT_STEP,
-        source: 'CANONICAL_ID',
-      };
-    }
-    if (lowerId.includes('dumbbell') || lowerId.includes('덤벨')) {
-      return {
-        isDumbbell: true,
-        isCable: false,
-        isBarbell: false,
-        resolvedEquipment: 'DUMBBELL',
-        step: DUMBBELL_WEIGHT_STEP,
-        source: 'CANONICAL_ID',
-      };
-    }
-    if (
-      !lowerId.includes('machine') &&
-      !lowerId.includes('머신') &&
-      (lowerId.includes('barbell') || lowerId.includes('바벨') || CANONICAL_BARBELL_IDS.has(lowerId))
-    ) {
-      return {
-        isDumbbell: false,
-        isCable: false,
-        isBarbell: true,
-        resolvedEquipment: 'BARBELL',
-        step: BARBELL_WEIGHT_STEP,
-        source: 'CANONICAL_ID',
-      };
-    }
-  }
-
-  // Priority 3: Name / Fallback
-  if ((canonicalName && checkCableNameOrKeyword(canonicalName)) || (name && checkCableNameOrKeyword(name))) {
-    return {
-      isDumbbell: false,
-      isCable: true,
-      isBarbell: false,
-      resolvedEquipment: 'CABLE',
-      step: CABLE_WEIGHT_STEP,
-      source: 'NAME_FALLBACK',
-    };
-  }
-
-  if ((canonicalName && checkDumbbellNameOrKeyword(canonicalName)) || (name && checkDumbbellNameOrKeyword(name))) {
-    return {
-      isDumbbell: true,
-      isCable: false,
-      isBarbell: false,
-      resolvedEquipment: 'DUMBBELL',
-      step: DUMBBELL_WEIGHT_STEP,
-      source: 'NAME_FALLBACK',
-    };
-  }
-
-  if ((canonicalName && checkBarbellNameOrKeyword(canonicalName)) || (name && checkBarbellNameOrKeyword(name))) {
-    return {
-      isDumbbell: false,
-      isCable: false,
-      isBarbell: true,
-      resolvedEquipment: 'BARBELL',
-      step: BARBELL_WEIGHT_STEP,
-      source: 'NAME_FALLBACK',
-    };
-  }
+  const { equipment, source, conflict } = resolveEquipmentClassification(exercise, fallbackName);
+  const step = getWeightStep(exercise, fallbackName);
 
   return {
-    isDumbbell: false,
-    isCable: false,
-    isBarbell: false,
-    resolvedEquipment: 'OTHER',
-    step: DEFAULT_WEIGHT_STEP,
-    source: 'DEFAULT',
+    isDumbbell: equipment === 'DUMBBELL',
+    isCable: equipment === 'CABLE',
+    isBarbell: equipment === 'BARBELL',
+    resolvedEquipment: equipment,
+    step,
+    source,
+    conflict,
   };
 }
 
 /**
  * Validates whether a direct weight input is valid for saving.
- * - Allows any finite number or non-empty numeric string >= 0 (e.g. 0, "0", 6, 6.75, 21).
- * - Disallows empty string, whitespace, null, undefined, negative numbers, NaN, and Infinity.
+ * - Allows number or non-empty numeric string whose parsed value is finite and >= 0 (e.g. 0, "0", 6, 6.75, 21).
+ * - Strictly rejects boolean, array, object, null, undefined, empty string, whitespace, negative numbers, NaN, and Infinity.
  */
 export function isValidWeightInput(rawWeight: unknown): boolean {
   if (rawWeight === null || rawWeight === undefined) {
     return false;
   }
-  if (typeof rawWeight === 'string' && rawWeight.trim() === '') {
+  if (typeof rawWeight === 'boolean') {
     return false;
   }
-  const num = Number(rawWeight);
-  if (isNaN(num) || !isFinite(num) || num < 0) {
+  if (typeof rawWeight === 'object') {
     return false;
   }
-  return true;
-}
+  if (typeof rawWeight !== 'number' && typeof rawWeight !== 'string') {
+    return false;
+  }
 
+  if (typeof rawWeight === 'string') {
+    const trimmed = rawWeight.trim();
+    if (trimmed === '') {
+      return false;
+    }
+    const num = Number(trimmed);
+    return !isNaN(num) && isFinite(num) && num >= 0;
+  }
+
+  return !isNaN(rawWeight) && isFinite(rawWeight) && rawWeight >= 0;
+}

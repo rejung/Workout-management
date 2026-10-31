@@ -369,6 +369,81 @@ export function runWeightStepPolicyTests(): { passed: boolean; message: string }
   assert(isValidWeightInput('abc') === false, 'Direct input: invalid text is blocked on submit');
   assert(isValidWeightInput(Infinity) === false, 'Direct input: Infinity is blocked on submit');
 
+  // 12. Non-number types rejected by isValidWeightInput (boolean, array, object)
+  assert(isValidWeightInput(true) === false, 'Direct input: boolean true is rejected');
+  assert(isValidWeightInput(false) === false, 'Direct input: boolean false is rejected');
+  assert(isValidWeightInput([]) === false, 'Direct input: empty array is rejected');
+  assert(isValidWeightInput([6]) === false, 'Direct input: array [6] is rejected');
+  assert(isValidWeightInput({}) === false, 'Direct input: object is rejected');
+  assert(isValidWeightInput({ weight: 20 }) === false, 'Direct input: object with properties is rejected');
+  assert(isValidWeightInput(() => 10) === false, 'Direct input: function is rejected');
+  assert(isValidWeightInput('-Infinity') === false, 'Direct input: "-Infinity" is rejected');
+
+  // 13. Reproduction Case 1 & 2: Unified classification and ID vs Name precedence
+  // Case 1: {id:'dumbbell-row', name:'케이블 로우'} (No metadata) -> ID takes precedence: Dumbbell 2kg
+  const repro1 = { id: 'dumbbell-row', name: '케이블 로우' };
+  assert(getWeightStep(repro1) === 2, 'Repro 1: {id: "dumbbell-row", name: "케이블 로우"} yields 2kg (ID takes precedence over name)');
+  const repro1Diag = inspectWeightStepResolution(repro1);
+  assert(repro1Diag.step === 2, 'Repro 1: Diagnostics step matches getWeightStep (2kg)');
+  assert(repro1Diag.resolvedEquipment === 'DUMBBELL', 'Repro 1: Diagnostics resolvedEquipment is DUMBBELL');
+  assert(repro1Diag.source === 'CANONICAL_ID', 'Repro 1: Diagnostics source is CANONICAL_ID');
+  assert(isDumbbellExercise(repro1) === true, 'Repro 1: isDumbbellExercise is true');
+  assert(isCableExercise(repro1) === false, 'Repro 1: isCableExercise is false');
+  assert(isBarbellExercise(repro1) === false, 'Repro 1: isBarbellExercise is false');
+
+  // Case 2: {id:'bench-press', name:'덤벨 벤치프레스'} (No metadata) -> ID takes precedence: Barbell 5kg
+  const repro2 = { id: 'bench-press', name: '덤벨 벤치프레스' };
+  assert(getWeightStep(repro2) === 5, 'Repro 2: {id: "bench-press", name: "덤벨 벤치프레스"} yields 5kg (ID takes precedence over name)');
+  const repro2Diag = inspectWeightStepResolution(repro2);
+  assert(repro2Diag.step === 5, 'Repro 2: Diagnostics step matches getWeightStep (5kg)');
+  assert(repro2Diag.resolvedEquipment === 'BARBELL', 'Repro 2: Diagnostics resolvedEquipment is BARBELL');
+  assert(repro2Diag.source === 'CANONICAL_ID', 'Repro 2: Diagnostics source is CANONICAL_ID');
+  assert(isBarbellExercise(repro2) === true, 'Repro 2: isBarbellExercise is true');
+  assert(isDumbbellExercise(repro2) === false, 'Repro 2: isDumbbellExercise is false');
+  assert(isCableExercise(repro2) === false, 'Repro 2: isCableExercise is false');
+
+  // Explicit metadata overrides canonical ID:
+  const repro1WithMeta = { id: 'dumbbell-row', name: '케이블 로우', equipment: 'CABLE' };
+  assert(getWeightStep(repro1WithMeta) === 4.5, 'Metadata overrides ID: equipment="CABLE" on dumbbell-row yields 4.5kg');
+  assert(inspectWeightStepResolution(repro1WithMeta).step === 4.5, 'Metadata overrides ID: Diagnostics step is 4.5kg');
+  assert(inspectWeightStepResolution(repro1WithMeta).source === 'EQUIPMENT_METADATA', 'Metadata overrides ID: source is EQUIPMENT_METADATA');
+  assert(isCableExercise(repro1WithMeta) === true, 'Metadata overrides ID: isCableExercise is true');
+  assert(isDumbbellExercise(repro1WithMeta) === false, 'Metadata overrides ID: isDumbbellExercise is false');
+
+  const repro2WithMeta = { id: 'bench-press', name: '덤벨 벤치프레스', equipment: 'DUMBBELL' };
+  assert(getWeightStep(repro2WithMeta) === 2, 'Metadata overrides ID: equipment="DUMBBELL" on bench-press yields 2kg');
+  assert(inspectWeightStepResolution(repro2WithMeta).step === 2, 'Metadata overrides ID: Diagnostics step is 2kg');
+  assert(inspectWeightStepResolution(repro2WithMeta).source === 'EQUIPMENT_METADATA', 'Metadata overrides ID: source is EQUIPMENT_METADATA');
+  assert(isDumbbellExercise(repro2WithMeta) === true, 'Metadata overrides ID: isDumbbellExercise is true');
+  assert(isBarbellExercise(repro2WithMeta) === false, 'Metadata overrides ID: isBarbellExercise is false');
+
+  // 14. Single Classification and Disjoint Guarantee across all sample cases
+  const sampleCases: (Partial<Exercise> | string | null | undefined)[] = [
+    repro1,
+    repro2,
+    repro1WithMeta,
+    repro2WithMeta,
+    { id: 'lat-pulldown', name: '랫 풀 다운' },
+    { id: 'lateral-raise', name: '사이드 레터럴 레이즈' },
+    { id: 'leg-press', equipment: 'MACHINE' },
+    null,
+    undefined,
+    '케이블 컬',
+    '바벨 스쿼트',
+    '덤벨 컬',
+  ];
+
+  for (const sc of sampleCases) {
+    const isDb = isDumbbellExercise(sc);
+    const isCable = isCableExercise(sc);
+    const isBb = isBarbellExercise(sc);
+    const activeCount = [isDb, isCable, isBb].filter(Boolean).length;
+    assert(activeCount <= 1, `Mutually exclusive classification: at most one equipment type is true for ${JSON.stringify(sc)}`);
+    const diag = inspectWeightStepResolution(sc);
+    const actual = getWeightStep(sc);
+    assert(diag.step === actual, `Diagnostics step exactly matches getWeightStep (${actual}kg) for ${JSON.stringify(sc)}`);
+  }
+
   return results;
 }
 
