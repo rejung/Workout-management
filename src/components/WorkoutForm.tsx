@@ -11,7 +11,6 @@ import { formatSetRecordsList } from '../utils/formatter';
 import { getSortedExercises } from '../utils/sorting';
 import { motion } from 'motion/react';
 import { generateUUID } from '../utils/workoutEngine';
-import { getWeightStep, isCableExercise } from '../domain/weightStepPolicy';
 
 interface WorkoutFormProps {
   exercises: Exercise[];
@@ -410,8 +409,6 @@ export default function WorkoutForm({
                 const prevSession = getPreviousSessionData(ae.exerciseId);
                 const dbExercise = exercises.find(e => e.id === ae.exerciseId || e.name === ae.exerciseName);
                 const logType = dbExercise?.logType || 'STANDARD';
-                const weightStep = getWeightStep(dbExercise || ae);
-                const isCable = isCableExercise(dbExercise || ae);
 
                 return (
                   <motion.div
@@ -696,7 +693,7 @@ export default function WorkoutForm({
                                 <input
                                   type="number"
                                   min="0"
-                                  step={isCable ? 'any' : weightStep}
+                                  step="any"
                                   value={set.weight !== undefined && set.weight !== null ? set.weight : ''}
                                   onChange={(e) => handleUpdateSet(ae.exerciseId, set.id, 'weight', e.target.value)}
                                   className="w-full bg-transparent text-sm font-semibold font-mono text-center text-zinc-800 focus:outline-none"
