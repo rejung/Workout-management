@@ -23,7 +23,11 @@
  */
 
 import { StressDimension } from '../types/stressModel.types';
-import { StressMagnitudeInput } from '../types/stressMagnitudeInput.types';
+import {
+  StressMagnitudeInput,
+  StrengthStressMagnitudeInput,
+  RunningStressMagnitudeInput,
+} from '../types/stressMagnitudeInput.types';
 import { CanonicalRunningSession } from '../types/running.types';
 import { EvaluationContext } from '../types/residualStressTrace.types';
 import { AllDimensionResidualStates } from '../types/dimensionResidualState.types';
@@ -78,6 +82,239 @@ const COMPOUND_EXERCISE_IDS = new Set([
 // =========================================================================
 // 1. Recent Training Context Derivation
 // =========================================================================
+// Helper Types & Deduplication for Unified Sessions
+// =========================================================================
+
+interface UnifiedRunningFact {
+  readonly logId?: string;
+  readonly date: string;
+  readonly startTime?: string;
+  readonly exerciseName: string;
+  readonly distanceKm?: number;
+  readonly durationSeconds?: number;
+  readonly paceSecondsPerKm?: number;
+  readonly temporalResult: TemporalEligibilityResult;
+}
+
+interface UnifiedWorkoutSession {
+  readonly sessionKey: string;
+  readonly date: string;
+  readonly startTime?: string;
+  readonly temporalResult: TemporalEligibilityResult;
+  readonly strengthItems: readonly StrengthStressMagnitudeInput[];
+  readonly runningItems: readonly UnifiedRunningFact[];
+  readonly exerciseNames: readonly string[];
+  readonly hasStrength: boolean;
+  readonly hasCardio: boolean;
+  readonly hasAxialLoading: boolean;
+  readonly hasCompoundLoading: boolean;
+  readonly hasHighWorkingLoad: boolean;
+  readonly highLoadExerciseDescriptions: readonly string[];
+  readonly axialExerciseNames: readonly string[];
+  readonly compoundExerciseNames: readonly string[];
+}
+
+/**
+ * Builds discrete WorkoutLog session aggregates, deduplicating running representations
+ * between allHistoricalSessions and runningSessions, and preserving all exercise evidence.
+ */
+function buildUnifiedWorkoutSessions(
+  allHistoricalSessions: readonly StressMagnitudeInput[],
+  evaluationContext: EvaluationContext,
+  runningSessions?: readonly CanonicalRunningSession[]
+): readonly UnifiedWorkoutSession[] {
+  // 1. Deduplicate running facts across allHistoricalSessions and runningSessions
+  const runningInputs = allHistoricalSessions.filter(
+    (s): s is RunningStressMagnitudeInput => s.kind === 'running'
+  );
+  const canonRuns = runningSessions ?? [];
+  const claimedCanonIndices = new Set<number>();
+  const unifiedRuns: UnifiedRunningFact[] = [];
+
+  for (const s of runningInputs) {
+    const tempResult = evaluateSessionTemporalEligibility(s, evaluationContext);
+
+    // Look for matching canonical run in runningSessions
+    let matchedIndex = -1;
+    for (let i = 0; i < canonRuns.length; i++) {
+      if (claimedCanonIndices.has(i)) continue;
+      const r = canonRuns[i];
+      // If both have non-empty IDs, they must match
+      if (r.logId && s.sourceLogId && r.logId !== s.sourceLogId) continue;
+      if (r.date !== s.date) continue;
+      if ((r.startTime ?? '') !== (s.startTime ?? '')) continue;
+      if (
+        r.metrics.distanceKm !== undefined &&
+        s.distanceKm !== undefined &&
+        Math.abs(r.metrics.distanceKm - s.distanceKm) > 1e-4
+      ) {
+        continue;
+      }
+      if (
+        r.metrics.durationSeconds !== undefined &&
+        s.durationSeconds !== undefined &&
+        Math.abs(r.metrics.durationSeconds - s.durationSeconds) > 1e-4
+      ) {
+        continue;
+      }
+      matchedIndex = i;
+      break;
+    }
+
+    if (matchedIndex !== -1) {
+      claimedCanonIndices.add(matchedIndex);
+    }
+
+    unifiedRuns.push({
+      logId: s.sourceLogId,
+      date: s.date,
+      startTime: s.startTime,
+      exerciseName: s.exerciseName || 'Running',
+      distanceKm: s.distanceKm,
+      durationSeconds: s.durationSeconds,
+      paceSecondsPerKm: s.paceSecondsPerKm,
+      temporalResult: tempResult,
+    });
+  }
+
+  // Any canonical running sessions from runningSessions that weren't claimed
+  for (let i = 0; i < canonRuns.length; i++) {
+    if (claimedCanonIndices.has(i)) continue;
+    const r = canonRuns[i];
+    const tempResult = evaluateSessionTemporalEligibility(r, evaluationContext);
+    unifiedRuns.push({
+      logId: r.logId,
+      date: r.date,
+      startTime: r.startTime,
+      exerciseName: r.exerciseName || 'Running',
+      distanceKm: r.metrics.distanceKm,
+      durationSeconds: r.metrics.durationSeconds,
+      paceSecondsPerKm: r.metrics.paceSecondsPerKm,
+      temporalResult: tempResult,
+    });
+  }
+
+  // 2. Group into discrete WorkoutLog sessions
+  interface MutableSessionAggregate {
+    sessionKey: string;
+    date: string;
+    startTime?: string;
+    temporalResult: TemporalEligibilityResult;
+    strengthItems: StrengthStressMagnitudeInput[];
+    runningItems: UnifiedRunningFact[];
+    exerciseNamesSet: Set<string>;
+    axialExerciseNamesSet: Set<string>;
+    compoundExerciseNamesSet: Set<string>;
+    highLoadDescriptions: string[];
+  }
+
+  const sessionMap = new Map<string, MutableSessionAggregate>();
+  let anonIndex = 0;
+
+  // Add strength items
+  for (const s of allHistoricalSessions) {
+    if (s.kind !== 'strength') continue;
+    const tempResult = evaluateSessionTemporalEligibility(s, evaluationContext);
+    const key = s.sourceLogId ? `log_${s.sourceLogId}` : `anon_str_${++anonIndex}`;
+
+    let sess = sessionMap.get(key);
+    if (!sess) {
+      sess = {
+        sessionKey: key,
+        date: s.date,
+        startTime: s.startTime,
+        temporalResult: tempResult,
+        strengthItems: [],
+        runningItems: [],
+        exerciseNamesSet: new Set(),
+        axialExerciseNamesSet: new Set(),
+        compoundExerciseNamesSet: new Set(),
+        highLoadDescriptions: [],
+      };
+      sessionMap.set(key, sess);
+    }
+
+    sess.strengthItems.push(s);
+    const exName = s.exerciseName || s.exerciseId || 'Strength Exercise';
+    sess.exerciseNamesSet.add(exName);
+
+    if (s.dimensions.includes('axial-systemic-loading')) {
+      sess.axialExerciseNamesSet.add(exName);
+    }
+
+    const isCompound =
+      COMPOUND_EXERCISE_IDS.has(s.exerciseId.toLowerCase()) ||
+      s.dimensions.length >= 2 ||
+      s.dimensions.includes('axial-systemic-loading');
+    if (isCompound) {
+      sess.compoundExerciseNamesSet.add(exName);
+    }
+
+    // High working load condition: explicitWorkingSetCount >= 3 OR totalLoadVolumeKgReps > 2000
+    // (numericalPeakEstimated1RMKg > 0 condition is REMOVED)
+    const isHighLoad =
+      (s.setEvidence && s.setEvidence.explicitWorkingSetCount >= 3) ||
+      (s.loadVolumeEvidence && s.loadVolumeEvidence.totalLoadVolumeKgReps > 2000);
+    if (isHighLoad) {
+      sess.highLoadDescriptions.push(`${exName} (${s.date})`);
+    }
+  }
+
+  // Add running items
+  for (const run of unifiedRuns) {
+    const key = run.logId ? `log_${run.logId}` : `anon_run_${++anonIndex}`;
+
+    let sess = sessionMap.get(key);
+    if (!sess) {
+      sess = {
+        sessionKey: key,
+        date: run.date,
+        startTime: run.startTime,
+        temporalResult: run.temporalResult,
+        strengthItems: [],
+        runningItems: [],
+        exerciseNamesSet: new Set(),
+        axialExerciseNamesSet: new Set(),
+        compoundExerciseNamesSet: new Set(),
+        highLoadDescriptions: [],
+      };
+      sessionMap.set(key, sess);
+    }
+
+    sess.runningItems.push(run);
+    sess.exerciseNamesSet.add(run.exerciseName || 'Running');
+  }
+
+  // Convert to frozen immutable structure
+  const result: UnifiedWorkoutSession[] = [];
+  for (const sess of sessionMap.values()) {
+    result.push(
+      Object.freeze({
+        sessionKey: sess.sessionKey,
+        date: sess.date,
+        startTime: sess.startTime,
+        temporalResult: sess.temporalResult,
+        strengthItems: Object.freeze(sess.strengthItems),
+        runningItems: Object.freeze(sess.runningItems),
+        exerciseNames: Object.freeze(Array.from(sess.exerciseNamesSet)),
+        hasStrength: sess.strengthItems.length > 0,
+        hasCardio: sess.runningItems.length > 0,
+        hasAxialLoading: sess.axialExerciseNamesSet.size > 0,
+        hasCompoundLoading: sess.compoundExerciseNamesSet.size > 0,
+        hasHighWorkingLoad: sess.highLoadDescriptions.length > 0,
+        highLoadExerciseDescriptions: Object.freeze(sess.highLoadDescriptions),
+        axialExerciseNames: Object.freeze(Array.from(sess.axialExerciseNamesSet)),
+        compoundExerciseNames: Object.freeze(Array.from(sess.compoundExerciseNamesSet)),
+      })
+    );
+  }
+
+  return Object.freeze(result);
+}
+
+// =========================================================================
+// 1. Recent Training Context Derivation
+// =========================================================================
 
 /**
  * Derives RecentTrainingContext from actual recorded strength and cardio sessions.
@@ -88,57 +325,14 @@ export function deriveRecentTrainingContext(
   runningSessions?: readonly CanonicalRunningSession[],
   policyWindowDays: number = DEFAULT_RECENT_TRAINING_WINDOW_DAYS
 ): RecentTrainingContext {
+  const allSessions = buildUnifiedWorkoutSessions(
+    allHistoricalSessions,
+    evaluationContext,
+    runningSessions
+  );
+
   // 1. Filter sessions by temporal eligibility
-  interface UnifiedEligibleSession {
-    readonly date: string;
-    readonly startTime?: string;
-    readonly exerciseOrActivityName: string;
-    readonly isStrength: boolean;
-    readonly isCardio: boolean;
-    readonly source: StressMagnitudeInput | CanonicalRunningSession;
-    readonly temporalResult: TemporalEligibilityResult;
-  }
-
-  const eligibleSessions: UnifiedEligibleSession[] = [];
-
-  for (const s of allHistoricalSessions) {
-    const tempResult = evaluateSessionTemporalEligibility(s, evaluationContext);
-    if (tempResult.isEligible) {
-      const isCardio = s.kind === 'running';
-      eligibleSessions.push({
-        date: s.date,
-        startTime: s.startTime,
-        exerciseOrActivityName: s.exerciseName || (isCardio ? 'Running' : 'Strength Exercise'),
-        isStrength: !isCardio,
-        isCardio: isCardio,
-        source: s,
-        temporalResult: tempResult,
-      });
-    }
-  }
-
-  if (runningSessions) {
-    const existingLogIds = new Set(
-      allHistoricalSessions.map((s) => s.sourceLogId).filter(Boolean)
-    );
-    for (const r of runningSessions) {
-      if (r.logId && existingLogIds.has(r.logId)) {
-        continue;
-      }
-      const tempResult = evaluateSessionTemporalEligibility(r, evaluationContext);
-      if (tempResult.isEligible) {
-        eligibleSessions.push({
-          date: r.date,
-          startTime: r.startTime,
-          exerciseOrActivityName: r.exerciseName || 'Running',
-          isStrength: false,
-          isCardio: true,
-          source: r,
-          temporalResult: tempResult,
-        });
-      }
-    }
-  }
+  const eligibleSessions = allSessions.filter((s) => s.temporalResult.isEligible);
 
   // 2. Identify latest training date and days since last training
   let lastTrainingDate: string | undefined = undefined;
@@ -155,7 +349,7 @@ export function deriveRecentTrainingContext(
   }
 
   // 3. Group eligible sessions by calendar date within policy window
-  const sessionsByDateMap = new Map<string, UnifiedEligibleSession[]>();
+  const sessionsByDateMap = new Map<string, UnifiedWorkoutSession[]>();
   for (const s of eligibleSessions) {
     const delta = computeCalendarDayDelta(evaluationContext.evaluationCalendarDate, s.date);
     // Include sessions on evaluation date (delta === 0) or within policy window (0 <= delta < policyWindowDays)
@@ -178,8 +372,8 @@ export function deriveRecentTrainingContext(
   for (const date of uniqueDatesSorted) {
     const daySessions = sessionsByDateMap.get(date) ?? [];
     const delta = computeCalendarDayDelta(evaluationContext.evaluationCalendarDate, date);
-    const strengthCount = daySessions.filter((s) => s.isStrength).length;
-    const cardioCount = daySessions.filter((s) => s.isCardio).length;
+    const strengthCount = daySessions.filter((s) => s.hasStrength).length;
+    const cardioCount = daySessions.filter((s) => s.hasCardio).length;
     const isMulti = daySessions.length > 1;
 
     if (isMulti) multiSessionDayCount++;
@@ -187,7 +381,7 @@ export function deriveRecentTrainingContext(
     if (cardioCount > 0) hasWindowCardio = true;
     totalWindowSessions += daySessions.length;
 
-    const names = Array.from(new Set(daySessions.map((s) => s.exerciseOrActivityName)));
+    const names = Array.from(new Set(daySessions.flatMap((s) => s.exerciseNames)));
 
     dailyBreakdowns.push(
       Object.freeze({
@@ -207,7 +401,6 @@ export function deriveRecentTrainingContext(
   let consecutiveDays = 0;
   let checkDelta = 1;
   while (checkDelta < policyWindowDays) {
-    // Look for any date with delta === checkDelta
     const foundDay = dailyBreakdowns.find((b) => b.calendarDaysAgo === checkDelta);
     if (foundDay && foundDay.sessionCount > 0) {
       consecutiveDays++;
@@ -349,24 +542,32 @@ export function deriveSystemicTrainingDemandContext(
 ): SystemicTrainingDemandContext {
   const demandFactors: string[] = [];
 
-  // 1. Axial Loading Exposure
-  const axialSessions: StressMagnitudeInput[] = [];
-  const axialExercisesSet = new Set<string>();
-  let lastAxialDate: string | undefined = undefined;
+  const allSessions = buildUnifiedWorkoutSessions(
+    allHistoricalSessions,
+    evaluationContext,
+    runningSessions
+  );
 
-  for (const s of allHistoricalSessions) {
-    if (s.kind === 'strength' && s.dimensions.includes('axial-systemic-loading')) {
-      const temp = evaluateSessionTemporalEligibility(s, evaluationContext);
-      if (temp.isEligible) {
-        const delta = computeCalendarDayDelta(evaluationContext.evaluationCalendarDate, s.date);
-        if (delta >= 0 && delta < policyWindowDays) {
-          axialSessions.push(s);
-          if (s.exerciseName) axialExercisesSet.add(s.exerciseName);
-          if (!lastAxialDate || s.date > lastAxialDate) {
-            lastAxialDate = s.date;
-          }
-        }
+  // Eligible sessions within policy window
+  const windowSessions: UnifiedWorkoutSession[] = [];
+  for (const s of allSessions) {
+    if (s.temporalResult.isEligible) {
+      const delta = computeCalendarDayDelta(evaluationContext.evaluationCalendarDate, s.date);
+      if (delta >= 0 && delta < policyWindowDays) {
+        windowSessions.push(s);
       }
+    }
+  }
+
+  // 1. Axial Loading Exposure
+  const axialSessions = windowSessions.filter((s) => s.hasAxialLoading);
+  const axialExercisesSet = new Set<string>(
+    axialSessions.flatMap((s) => s.axialExerciseNames)
+  );
+  let lastAxialDate: string | undefined = undefined;
+  for (const s of axialSessions) {
+    if (!lastAxialDate || s.date > lastAxialDate) {
+      lastAxialDate = s.date;
     }
   }
 
@@ -385,30 +586,13 @@ export function deriveSystemicTrainingDemandContext(
   });
 
   // 2. Repeated Compound Loading Exposure
-  const compoundExercisesSet = new Set<string>();
-  let compoundSessionCount = 0;
-
-  for (const s of allHistoricalSessions) {
-    if (s.kind === 'strength') {
-      const isCompound =
-        COMPOUND_EXERCISE_IDS.has(s.exerciseId.toLowerCase()) ||
-        s.dimensions.length >= 2 ||
-        s.dimensions.includes('axial-systemic-loading');
-
-      if (isCompound) {
-        const temp = evaluateSessionTemporalEligibility(s, evaluationContext);
-        if (temp.isEligible) {
-          const delta = computeCalendarDayDelta(evaluationContext.evaluationCalendarDate, s.date);
-          if (delta >= 0 && delta < policyWindowDays) {
-            compoundSessionCount++;
-            if (s.exerciseName) compoundExercisesSet.add(s.exerciseName);
-          }
-        }
-      }
-    }
-  }
-
+  const compoundSessions = windowSessions.filter((s) => s.hasCompoundLoading);
+  const compoundExercisesSet = new Set<string>(
+    compoundSessions.flatMap((s) => s.compoundExerciseNames)
+  );
+  const compoundSessionCount = compoundSessions.length;
   const hasRepeatedCompoundLoading = compoundSessionCount >= 2;
+
   if (hasRepeatedCompoundLoading) {
     demandFactors.push(
       `Repeated multi-joint compound loading observed in ${compoundSessionCount} session(s) ([${Array.from(compoundExercisesSet).join(', ')}]).`
@@ -422,27 +606,12 @@ export function deriveSystemicTrainingDemandContext(
   });
 
   // 3. Recent High Working-Load Exposure
-  const highLoadSessions: string[] = [];
-  for (const s of allHistoricalSessions) {
-    if (s.kind === 'strength') {
-      const temp = evaluateSessionTemporalEligibility(s, evaluationContext);
-      if (temp.isEligible) {
-        const delta = computeCalendarDayDelta(evaluationContext.evaluationCalendarDate, s.date);
-        if (delta >= 0 && delta < policyWindowDays) {
-          const isHighWorkingLoad =
-            (s.setEvidence && s.setEvidence.explicitWorkingSetCount >= 3) ||
-            (s.loadVolumeEvidence && s.loadVolumeEvidence.totalLoadVolumeKgReps > 2000) ||
-            (s.e1RMEvidence && s.e1RMEvidence.numericalPeakEstimated1RMKg > 0);
-
-          if (isHighWorkingLoad) {
-            highLoadSessions.push(`${s.exerciseName || s.exerciseId} (${s.date})`);
-          }
-        }
-      }
-    }
-  }
-
+  const highLoadSessions = windowSessions.filter((s) => s.hasHighWorkingLoad);
+  const observedHighLoadDescriptions = highLoadSessions.flatMap(
+    (s) => s.highLoadExerciseDescriptions
+  );
   const hasHighWorkingLoad = highLoadSessions.length > 0;
+
   if (hasHighWorkingLoad) {
     demandFactors.push(
       `High working-set load exposure observed in ${highLoadSessions.length} session(s).`
@@ -452,40 +621,19 @@ export function deriveSystemicTrainingDemandContext(
   const recentHighLoadExposure: RecentHighLoadExposure = Object.freeze({
     hasHighWorkingLoad,
     highLoadSessionCount: highLoadSessions.length,
-    observedSessions: Object.freeze(highLoadSessions),
+    observedSessions: Object.freeze(observedHighLoadDescriptions),
   });
 
   // 4. Cardio Exposure Context
-  let cardioCount = 0;
+  const cardioSessions = windowSessions.filter((s) => s.hasCardio);
+  const cardioCount = cardioSessions.length;
   let totalDurationSec = 0;
   let totalDistanceKm = 0;
 
-  if (runningSessions) {
-    for (const r of runningSessions) {
-      const temp = evaluateSessionTemporalEligibility(r, evaluationContext);
-      if (temp.isEligible) {
-        const delta = computeCalendarDayDelta(evaluationContext.evaluationCalendarDate, r.date);
-        if (delta >= 0 && delta < policyWindowDays) {
-          cardioCount++;
-          if (r.metrics.durationSeconds) totalDurationSec += r.metrics.durationSeconds;
-          if (r.metrics.distanceKm) totalDistanceKm += r.metrics.distanceKm;
-        }
-      }
-    }
-  }
-
-  // Also check running in allHistoricalSessions if any
-  for (const s of allHistoricalSessions) {
-    if (s.kind === 'running') {
-      const temp = evaluateSessionTemporalEligibility(s, evaluationContext);
-      if (temp.isEligible) {
-        const delta = computeCalendarDayDelta(evaluationContext.evaluationCalendarDate, s.date);
-        if (delta >= 0 && delta < policyWindowDays) {
-          cardioCount++;
-          if (s.durationSeconds) totalDurationSec += s.durationSeconds;
-          if (s.distanceKm) totalDistanceKm += s.distanceKm;
-        }
-      }
+  for (const s of cardioSessions) {
+    for (const r of s.runningItems) {
+      if (r.durationSeconds) totalDurationSec += r.durationSeconds;
+      if (r.distanceKm) totalDistanceKm += r.distanceKm;
     }
   }
 
@@ -509,7 +657,8 @@ export function deriveSystemicTrainingDemandContext(
   });
 
   // 5. Multi-Modality Exposure
-  const strengthCount = recentTrainingContext.recentSessionCount - cardioCount;
+  const strengthSessions = windowSessions.filter((s) => s.hasStrength);
+  const strengthCount = strengthSessions.length;
   const hasMultiModality = strengthCount > 0 && cardioCount > 0;
   const sameDayMultiModality = recentTrainingContext.recentTrainingDensity.sessionsByCalendarDay.some(
     (b) => b.strengthSessionCount > 0 && b.cardioSessionCount > 0
@@ -526,7 +675,7 @@ export function deriveSystemicTrainingDemandContext(
   const multiModalityExposure: MultiModalityExposureContext = Object.freeze({
     hasMultiModality,
     sameDayMultiModality,
-    strengthCount: Math.max(0, strengthCount),
+    strengthCount,
     cardioCount,
   });
 
@@ -668,17 +817,12 @@ export function deriveRestDecisionEvidence(
   const candidateLandscape = deriveRestCandidateLandscape(candidateDecisions);
 
   // 2. Identify Uncertainty Facts
-  let uncertainSessionCount = 0;
-  for (const s of allHistoricalSessions) {
-    const temp = evaluateSessionTemporalEligibility(s, evaluationContext);
-    if (temp.isUncertain) uncertainSessionCount++;
-  }
-  if (runningSessions) {
-    for (const r of runningSessions) {
-      const temp = evaluateSessionTemporalEligibility(r, evaluationContext);
-      if (temp.isUncertain) uncertainSessionCount++;
-    }
-  }
+  const allSessions = buildUnifiedWorkoutSessions(
+    allHistoricalSessions,
+    evaluationContext,
+    runningSessions
+  );
+  const uncertainSessionCount = allSessions.filter((s) => s.temporalResult.isUncertain).length;
 
   let bracketTraceCount = 0;
   for (const dim of ALL_CANONICAL_DIMENSIONS) {
