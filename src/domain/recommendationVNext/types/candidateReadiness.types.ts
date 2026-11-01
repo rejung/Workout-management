@@ -160,24 +160,37 @@ export interface CandidateHardConstraintBoundary {
 /**
  * Minimal structural overlap relation vocabulary.
  * Strictly limited to kinesiological pattern relationships without arbitrary penalties.
+ * - 'press-pattern-overlap': Anterior deltoid, clavicular pectoralis, and triceps pressing mechanics (e.g. Bench vs OHP).
+ * - 'torso-support-demand-overlap': Non-externally supported torso stabilization and erector spinae demand (Deadlift vs Barbell Row).
  */
-export type StructuralOverlapRelation = 'press-pattern-overlap';
+export type StructuralOverlapRelation =
+  | 'press-pattern-overlap'
+  | 'torso-support-demand-overlap';
 
 export interface StructuralReadinessOverlap {
   /** The specific structural relationship */
   readonly relation: StructuralOverlapRelation;
 
-  /** Source exercise ID generating the structural overlap (e.g. 'overhead_press') */
+  /** Source exercise ID generating the structural overlap (e.g. 'overhead_press', 'deadlift', 'barbell_row') */
   readonly sourceExerciseId: string;
 
   /** Source exercise display name */
   readonly sourceExerciseName: string;
 
-  /** Source stress dimension where the evidence originated (e.g. 'vertical-push') */
-  readonly sourceDimension: StressDimension;
+  /** Source workout log identifier (if available from source trace) */
+  readonly sourceLogId?: string;
 
-  /** Target required stress dimension on the candidate exercise (e.g. 'horizontal-push') */
-  readonly targetDimension: StressDimension;
+  /**
+   * Source stress dimension where the evidence originated (e.g. 'vertical-push').
+   * Optional for whole-movement/torso-support structural relationships.
+   */
+  readonly sourceDimension?: StressDimension;
+
+  /**
+   * Target required stress dimension on the candidate exercise (e.g. 'horizontal-push').
+   * Optional for whole-movement/torso-support structural relationships.
+   */
+  readonly targetDimension?: StressDimension;
 
   /** Strongest persistence state of the overlapping evidence */
   readonly persistence: PersistenceState | 'bracket' | 'uncertain';

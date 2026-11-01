@@ -518,13 +518,15 @@ export function runCandidateSynthesisAudit(): readonly SynthesisAuditScenarioRes
 
     const gs4Passed =
       rowReadiness.clearDimensions.includes('horizontal-pull') &&
-      rowReadiness.overallReadinessClass === 'clear';
+      rowReadiness.overallReadinessClass === 'caution' &&
+      rowReadiness.hasStructuralOverlap === true &&
+      rowReadiness.structuralOverlaps.some((o) => o.relation === 'torso-support-demand-overlap');
 
     results.push({
-      scenarioName: 'Scenario 7: GS4 Deadlift -> Row Separation (horizontal-pull remains clear without contamination)',
+      scenarioName: 'Scenario 7: GS4 Deadlift -> Row (horizontal-pull isolated, Phase 2 torso support demand overlap caution)',
       passed: gs4Passed,
-      details: `Row clear dimensions: [${rowReadiness.clearDimensions.join(', ')}]. Overall: ${rowReadiness.overallReadinessClass}.`,
-      invariantsChecked: 3,
+      details: `Row clear dimensions: [${rowReadiness.clearDimensions.join(', ')}]. Overall: ${rowReadiness.overallReadinessClass}, hasStructuralOverlap: ${rowReadiness.hasStructuralOverlap}.`,
+      invariantsChecked: 4,
     });
   }
 

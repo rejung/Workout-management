@@ -408,18 +408,24 @@ export function auditCandidateReadiness(): readonly CandidateReadinessAuditResul
       rowReadiness.candidateExerciseId === 'barbell_row' &&
       rowReadiness.requiredDimensions.length === 1 &&
       rowReadiness.requiredDimensions[0] === 'horizontal-pull' &&
-      rowReadiness.overallReadinessClass === 'clear' &&
+      // Direct dimension remains unpolluted (zero acute direct dimension conflict)
       rowReadiness.clearDimensions.includes('horizontal-pull') &&
       rowReadiness.definiteImmediateDimensions.length === 0 &&
-      rowReadiness.hasStructuralOverlap === false &&
-      rowReadiness.structuralOverlaps.length === 0;
+      rowReadiness.definiteResidualDimensions.length === 0 &&
+      // Phase 2: Torso support demand overlap connects Deadlift to Barbell Row
+      rowReadiness.hasStructuralOverlap === true &&
+      rowReadiness.structuralOverlaps.length === 1 &&
+      rowReadiness.structuralOverlaps[0].relation === 'torso-support-demand-overlap' &&
+      rowReadiness.structuralOverlaps[0].sourceExerciseId === 'deadlift' &&
+      rowReadiness.structuralOverlaps[0].persistence === 'immediate' &&
+      rowReadiness.overallReadinessClass === 'caution';
 
     results.push({
-      auditName: 'GS4: Deadlift does NOT pollute horizontal-pull (Barbell Row) readiness',
+      auditName: 'GS4: Deadlift does NOT pollute horizontal-pull, but properly reflects Phase 2 torso support demand overlap (caution)',
       passed,
       details: passed
-        ? 'PASSED: Deadlift contains zero horizontal-pull projection and zero structural overlap; Barbell Row remains completely clear.'
-        : 'FAILED: GS4 Barbell Row pollution isolation failed.',
+        ? 'PASSED: Deadlift contains zero horizontal-pull projection (dimension remains isolated), and establishes Phase 2 torso-support-demand-overlap (readiness=caution, hasStructuralOverlap=true).'
+        : 'FAILED: GS4 Barbell Row Phase 2 torso support demand overlap check failed.',
     });
   }
 

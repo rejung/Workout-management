@@ -129,18 +129,24 @@ export function runProjectedSessionAudit(): ProjectedSessionAuditReport {
     // In projected session (2026-08-21), candidate evaluation set exists
     const underlyingSet = projection.underlyingCandidateSet;
     const rowCand = underlyingSet?.candidates.find((c) => c.candidateExerciseId === 'barbell_row');
-    const isRowClear = rowCand?.readinessEvidence.overallReadinessClass === 'clear';
+    const isRowHorizontalPullClear = rowCand?.readinessEvidence.clearDimensions.includes('horizontal-pull') === true;
+    const hasTorsoOverlap =
+      rowCand?.readinessEvidence.hasStructuralOverlap === true &&
+      rowCand.readinessEvidence.structuralOverlaps.some((o) => o.relation === 'torso-support-demand-overlap');
+    const isRowCaution = rowCand?.readinessEvidence.overallReadinessClass === 'caution';
 
     const passedPS2 =
       projection.projectedDecisionClass === 'train' &&
-      isRowClear === true &&
+      isRowHorizontalPullClear &&
+      hasTorsoOverlap &&
+      isRowCaution &&
       projection.projectedDate === '2026-08-21';
 
     results.push({
       scenarioId: 'PS2',
-      title: 'Recent Deadlift -> Horizontal pull isolation and forward opportunity',
+      title: 'Recent Deadlift -> Horizontal pull isolation and Phase 2 torso support demand overlap',
       passed: passedPS2,
-      details: `ProjectedDate=${projection.projectedDate}, RowReadiness=${rowCand?.readinessEvidence.overallReadinessClass}, ProjectedCandidate=${projection.projectedCandidate?.candidateExerciseId}`,
+      details: `ProjectedDate=${projection.projectedDate}, RowReadiness=${rowCand?.readinessEvidence.overallReadinessClass}, HasTorsoOverlap=${hasTorsoOverlap}, ProjectedCandidate=${projection.projectedCandidate?.candidateExerciseId}`,
     });
   } catch (err: any) {
     results.push({
