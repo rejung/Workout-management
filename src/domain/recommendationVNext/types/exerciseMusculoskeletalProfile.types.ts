@@ -136,6 +136,19 @@ export type ExternalSupportType =
 export interface ExternalSupportOrVariationStatus {
   readonly supportType: ExternalSupportType;
   readonly isChestSupported: boolean;
+  /**
+   * Indicates that this profile models the verified reference baseline definition of the foundation lift
+   * (e.g., flat barbell bench press, conventional floor deadlift, standing free OHP).
+   *
+   * CONTRACTUAL CLARIFICATION:
+   * This flag specifies the domain knowledge profile's baseline specification only.
+   * It DOES NOT assert verification or compliance of an actual user's workout log or performance record.
+   */
+  readonly isReferenceBaselineProfile: boolean;
+  /**
+   * @deprecated Retained for backwards compatibility. Alias for isReferenceBaselineProfile.
+   * Does NOT indicate verification of actual user workout logs.
+   */
   readonly isVariationExplicitlyVerified: boolean;
   readonly variationDistinctionNotes?: string;
 }

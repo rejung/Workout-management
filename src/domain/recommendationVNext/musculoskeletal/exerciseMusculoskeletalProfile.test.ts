@@ -255,6 +255,28 @@ export function runMusculoskeletalTestSuite(): {
     'No duplicates, valid roles, frozen objects'
   );
 
+  // 2.8 Baseline profile semantics and neutralized objective descriptions
+  const allBaselineVerified = allProfiles.every(
+    (p) =>
+      p.externalSupportOrVariation.isReferenceBaselineProfile === true &&
+      p.externalSupportOrVariation.isVariationExplicitlyVerified === true
+  );
+  const noHyperbolicTerms = allProfiles.every((p) => {
+    const desc = p.torsoSupportDemand.description;
+    const ctx = p.torsoSupportDemand.erectorSpinaeContext;
+    const combined = `${desc} ${ctx}`;
+    return (
+      !combined.includes('극심한') &&
+      !combined.includes('최대 등척성') &&
+      !combined.includes('가벼운 역할에 그침')
+    );
+  });
+  assert(
+    'PROF-08: Baseline profile semantics clearly marked and descriptions neutralized of hyperbolic superlatives',
+    allBaselineVerified && noHyperbolicTerms,
+    'isReferenceBaselineProfile explicitly verified, hyperbolic terms (극심한, 최대 등척성, 가벼운 역할에 그침) removed'
+  );
+
   // =========================================================================
   // Section 3: Safe Lookup Behavior & Boundary Tests
   // =========================================================================
@@ -321,6 +343,104 @@ export function runMusculoskeletalTestSuite(): {
       rdlQuery.matchedBaseCandidate === 'deadlift' &&
       chestRowQuery.matchedBaseCandidate === 'barbell_row',
     'RDL and Chest-Supported Row safely prevented from colliding with foundation lifts'
+  );
+
+  // 3.5 Parenthesized variations with and without space return unconfirmed-variation
+  const rowChestNoSpace = getExerciseMusculoskeletalProfile('barbell_row(chest supported)');
+  const rowChestWithSpace = getExerciseMusculoskeletalProfile('barbell_row (chest supported)');
+  const ohpSeatedNoSpace = getExerciseMusculoskeletalProfile('overhead_press(seated)');
+  const ohpSeatedWithSpace = getExerciseMusculoskeletalProfile('overhead_press (seated)');
+  const dlRdlNoSpace = getExerciseMusculoskeletalProfile('deadlift(Romanian)');
+  const dlRdlWithSpace = getExerciseMusculoskeletalProfile('deadlift (Romanian)');
+  const benchInclineNoSpace = getExerciseMusculoskeletalProfile('bench_press(incline)');
+  const benchInclineWithSpace = getExerciseMusculoskeletalProfile('bench_press (incline)');
+  const benchInclineKorNoSpace = getExerciseMusculoskeletalProfile('벤치프레스(인클라인)');
+  const benchInclineKorWithSpace = getExerciseMusculoskeletalProfile('벤치프레스 (인클라인)');
+  const ohpSeatedKorNoSpace = getExerciseMusculoskeletalProfile('오버헤드프레스(시티드)');
+  const ohpSeatedKorWithSpace = getExerciseMusculoskeletalProfile('오버헤드프레스 (시티드)');
+
+  const allParenVariationsRecognized =
+    rowChestNoSpace.status === 'unconfirmed-variation' &&
+    rowChestWithSpace.status === 'unconfirmed-variation' &&
+    rowChestNoSpace.matchedBaseCandidate === 'barbell_row' &&
+    ohpSeatedNoSpace.status === 'unconfirmed-variation' &&
+    ohpSeatedWithSpace.status === 'unconfirmed-variation' &&
+    ohpSeatedNoSpace.matchedBaseCandidate === 'overhead_press' &&
+    dlRdlNoSpace.status === 'unconfirmed-variation' &&
+    dlRdlWithSpace.status === 'unconfirmed-variation' &&
+    dlRdlNoSpace.matchedBaseCandidate === 'deadlift' &&
+    benchInclineNoSpace.status === 'unconfirmed-variation' &&
+    benchInclineWithSpace.status === 'unconfirmed-variation' &&
+    benchInclineNoSpace.matchedBaseCandidate === 'bench_press' &&
+    benchInclineKorNoSpace.status === 'unconfirmed-variation' &&
+    benchInclineKorWithSpace.status === 'unconfirmed-variation' &&
+    benchInclineKorNoSpace.matchedBaseCandidate === 'bench_press' &&
+    ohpSeatedKorNoSpace.status === 'unconfirmed-variation' &&
+    ohpSeatedKorWithSpace.status === 'unconfirmed-variation' &&
+    ohpSeatedKorNoSpace.matchedBaseCandidate === 'overhead_press';
+
+  assert(
+    'LOOKUP-05: Parenthesized variations with and without spaces are preserved and return unconfirmed-variation',
+    allParenVariationsRecognized,
+    'Verified 12 variations across English/Korean with/without spaces: barbell_row(chest supported), OHP(seated), DL(Romanian), bench(incline), etc.'
+  );
+
+  // 3.6 Simple bilingual translations in parentheses resolve to supported base lifts
+  const benchBilingual1 = getExerciseMusculoskeletalProfile('벤치프레스 (Bench Press)');
+  const benchBilingual2 = getExerciseMusculoskeletalProfile('벤치프레스(Bench Press)');
+  const ohpBilingual1 = getExerciseMusculoskeletalProfile('오버헤드 프레스 (Overhead Press)');
+  const ohpBilingual2 = getExerciseMusculoskeletalProfile('오버헤드프레스(Overhead Press)');
+  const squatBilingual1 = getExerciseMusculoskeletalProfile('스쿼트 (Squat)');
+  const squatBilingual2 = getExerciseMusculoskeletalProfile('스쿼트(Squat)');
+  const dlBilingual1 = getExerciseMusculoskeletalProfile('데드리프트 (Deadlift)');
+  const dlBilingual2 = getExerciseMusculoskeletalProfile('데드리프트(Deadlift)');
+  const rowBilingual1 = getExerciseMusculoskeletalProfile('바벨 로우 (Barbell Row)');
+  const rowBilingual2 = getExerciseMusculoskeletalProfile('바벨로우(Barbell Row)');
+  const runBilingual1 = getExerciseMusculoskeletalProfile('러닝 (Running)');
+  const runBilingual2 = getExerciseMusculoskeletalProfile('러닝(Running)');
+
+  const allBilingualSupported =
+    benchBilingual1.status === 'supported' &&
+    benchBilingual2.status === 'supported' &&
+    benchBilingual1.profile.exerciseId === 'bench_press' &&
+    ohpBilingual1.status === 'supported' &&
+    ohpBilingual2.status === 'supported' &&
+    ohpBilingual1.profile.exerciseId === 'overhead_press' &&
+    squatBilingual1.status === 'supported' &&
+    squatBilingual2.status === 'supported' &&
+    squatBilingual1.profile.exerciseId === 'squat' &&
+    dlBilingual1.status === 'supported' &&
+    dlBilingual2.status === 'supported' &&
+    dlBilingual1.profile.exerciseId === 'deadlift' &&
+    rowBilingual1.status === 'supported' &&
+    rowBilingual2.status === 'supported' &&
+    rowBilingual1.profile.exerciseId === 'barbell_row' &&
+    runBilingual1.status === 'supported' &&
+    runBilingual2.status === 'supported' &&
+    runBilingual1.profile.exerciseId === 'running';
+
+  assert(
+    'LOOKUP-06: Verified Korean-English bilingual pairs in parentheses resolve cleanly to supported base profiles',
+    allBilingualSupported,
+    'Bilingual translations (벤치프레스 (Bench Press), 오버헤드 프레스 (Overhead Press), etc.) resolved to base profiles'
+  );
+
+  // 3.7 Unknown modifiers in parentheses are quarantined as unsupported (not falsely accepted as baseline)
+  const unknownMod1 = getExerciseMusculoskeletalProfile('bench_press(tempo)');
+  const unknownMod2 = getExerciseMusculoskeletalProfile('squat(pause)');
+  const unknownMod3 = getExerciseMusculoskeletalProfile('deadlift (deficit)');
+  const unknownMod4 = getExerciseMusculoskeletalProfile('barbell_row(custom_modifier)');
+
+  const allUnknownQuarantined =
+    unknownMod1.status === 'unsupported' &&
+    unknownMod2.status === 'unsupported' &&
+    unknownMod3.status === 'unsupported' &&
+    unknownMod4.status === 'unsupported';
+
+  assert(
+    'LOOKUP-07: Unknown parenthesized modifiers are quarantined as unsupported and never falsely confirmed as baseline',
+    allUnknownQuarantined,
+    'tempo, pause, deficit, custom_modifier safely quarantined as unsupported'
   );
 
   const allPassed = results.every((r) => r.passed);

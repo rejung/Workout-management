@@ -76,13 +76,14 @@ export const CANONICAL_EXERCISE_MUSCULOSKELETAL_PROFILES: Readonly<
     torsoSupportDemand: Object.freeze({
       demandLevel: 'minimal-external-support',
       description:
-        '평평한 벤치가 등과 척추 후면을 지지하여 척추에 대한 직접적 축성 압축이나 전단 모멘트가 외부 구조물로 분산됨. 흉곽 아치 유지 및 견갑골 후인·하강을 위한 체간 장력만 요구됨.',
+        '평평한 벤치가 등과 척추 후면을 지지하여 척추에 작용하는 축성 압축 및 전단 모멘트가 지지면으로 분산됨. 흉곽 아치 유지 및 견갑골 안정화를 위한 체간 장력이 작용함.',
       erectorSpinaeContext:
-        '척추기립근은 벤치 위에서 가벼운 흉요추 아치 자세를 지지하는 보조적 역할에 그치며, 스탠딩 리프트와 같은 고부하 축성 지탱 스트레스와 구별됨.',
+        '척추기립근은 벤치 위에서 흉요추 아치 자세를 유지하는 정적 지지 역할을 수행하며, 스탠딩 리프트의 축성 지탱 부하와 구별됨.',
     }),
     externalSupportOrVariation: Object.freeze({
       supportType: 'bench-supported',
       isChestSupported: false,
+      isReferenceBaselineProfile: true,
       isVariationExplicitlyVerified: true,
       variationDistinctionNotes:
         '플랫 바벨 벤치프레스 기준. 인클라인/덤벨 프레스와는 관여 각도와 자유도 안정화 요구가 상이함.',
@@ -128,13 +129,14 @@ export const CANONICAL_EXERCISE_MUSCULOSKELETAL_PROFILES: Readonly<
     torsoSupportDemand: Object.freeze({
       demandLevel: 'high-isometric-stabilization',
       description:
-        '외부 등받이나 지지대 없이 서 있는 상태에서 머리 위로 바벨을 밀어 올리므로, 요추 과신전을 억제하고 척추 중립을 유지하기 위한 상당한 복강내압과 체간 등척성 브레이싱이 요구됨.',
+        '외부 지지대 없이 서 있는 상태에서 머리 위로 바벨을 밀어 올리므로, 요추 중립을 유지하고 과신전을 제어하기 위한 복강내압과 체간 등척성 브레이싱이 요구됨.',
       erectorSpinaeContext:
-        '척추기립근이 체간 중립 유지를 위해 정적 안정근으로 동원되나, 이 국소 근육 관여를 전신 신경계 축성 피로(axial-systemic-loading) 전체와 동일시하지 않음.',
+        '척추기립근이 체간 중립 유지를 위한 정적 안정근으로 동원되나, 이 국소 근육 관여를 전신 축성 부하(axial-systemic-loading)와 동일시하지 않음.',
     }),
     externalSupportOrVariation: Object.freeze({
       supportType: 'unsupported-free-weight',
       isChestSupported: false,
+      isReferenceBaselineProfile: true,
       isVariationExplicitlyVerified: true,
       variationDistinctionNotes:
         '스탠딩 바벨 OHP 기준. 시티드 OHP나 머신 숄더 프레스와 같은 등받이 지지 변형과 구분됨.',
@@ -180,13 +182,14 @@ export const CANONICAL_EXERCISE_MUSCULOSKELETAL_PROFILES: Readonly<
     torsoSupportDemand: Object.freeze({
       demandLevel: 'high-isometric-stabilization',
       description:
-        '상체 상부에 얹힌 바벨로 인해 척추 전반에 강한 축성 압축력과 전방 굴곡 토크가 작용하여, 척추기립근과 복벽의 강력한 등척성 브레이싱이 필수적임.',
+        '상체 상부에 위치한 바벨로 인해 척추 전반에 축성 압축력과 전방 굴곡 모멘트가 작용하여, 척추기립근과 복벽의 등척성 브레이싱이 요구됨.',
       erectorSpinaeContext:
-        '척추기립근의 높은 정적 지지 요구가 존재하나, 이는 척추 신전 토크 저항이며 전신 축성 부하(axial systemic loading)를 척추기립근 단독 피로로 환원하지 않음.',
+        '척추기립근의 정적 지지 요구가 존재하나, 이는 척추 신전 모멘트 저항이며 전신 축성 부하(axial systemic loading)를 척추기립근 단독 피로로 환원하지 않음.',
     }),
     externalSupportOrVariation: Object.freeze({
       supportType: 'unsupported-free-weight',
       isChestSupported: false,
+      isReferenceBaselineProfile: true,
       isVariationExplicitlyVerified: true,
       variationDistinctionNotes:
         '바벨 백스쿼트 기준. 레그프레스나 핵스쿼트 등 머신 지지 하체 운동과 구분됨.',
@@ -206,7 +209,7 @@ export const CANONICAL_EXERCISE_MUSCULOSKELETAL_PROFILES: Readonly<
       Object.freeze({
         regionId: 'gluteals',
         role: 'primary-target',
-        functionalRoleDescription: '강력한 고관절 신전 종말 락아웃을 주도하는 둔근 주동',
+        functionalRoleDescription: '고관절 신전 종말 락아웃을 주도하는 둔근 주동',
       }),
       Object.freeze({
         regionId: 'hamstrings',
@@ -216,7 +219,7 @@ export const CANONICAL_EXERCISE_MUSCULOSKELETAL_PROFILES: Readonly<
       Object.freeze({
         regionId: 'erector-spinae',
         role: 'stabilizer',
-        functionalRoleDescription: '바닥에서 당기는 극심한 전방 굴곡 모멘트에 저항하는 핵심 등척성 척추 지지',
+        functionalRoleDescription: '바닥에서 당길 때 발생하는 전방 굴곡 모멘트에 저항하는 등척성 척추 지지',
       }),
       Object.freeze({
         regionId: 'quadriceps',
@@ -237,13 +240,14 @@ export const CANONICAL_EXERCISE_MUSCULOSKELETAL_PROFILES: Readonly<
     torsoSupportDemand: Object.freeze({
       demandLevel: 'high-isometric-stabilization',
       description:
-        '바닥의 정지된 중량을 들어 올릴 때 척추 전 영역에 매우 큰 전단 및 굴곡 모멘트가 발생하여 척추기립근 및 전신 코어의 최대 등척성 지지력이 요구됨.',
+        '바닥의 정지된 중량을 들어 올릴 때 척추 전 영역에 전단 및 굴곡 모멘트가 발생하여 척추기립근 및 체간 코어의 등척성 지지력이 요구됨.',
       erectorSpinaeContext:
-        '척추기립근은 척추 중립을 수호하는 핵심 자세 유지 근육이나, 데드리프트의 고부하 스트레스는 신경계 및 전신 축성 맥락을 동반하므로 기립근 단일 피로로 동일시하지 않음.',
+        '척추기립근은 척추 중립을 유지하는 자세 안정근이나, 데드리프트의 부하는 전신 및 신경계 축성 맥락을 동반하므로 척추기립근 단일 피로로 동일시하지 않음.',
     }),
     externalSupportOrVariation: Object.freeze({
       supportType: 'unsupported-free-weight',
       isChestSupported: false,
+      isReferenceBaselineProfile: true,
       isVariationExplicitlyVerified: true,
       variationDistinctionNotes:
         '컨벤셔널 바벨 데드리프트 기준. RDL(로마니안 데드리프트)은 바닥 리셋 없이 햄스트링 신장성 자극에 집중하는 별도 힌지 변형으로, 컨벤셔널 데드리프트와 동일시하지 않음.',
@@ -299,13 +303,14 @@ export const CANONICAL_EXERCISE_MUSCULOSKELETAL_PROFILES: Readonly<
     torsoSupportDemand: Object.freeze({
       demandLevel: 'high-isometric-stabilization',
       description:
-        '상체를 앞으로 숙인 채 중력에 대항하여 중량을 당기므로 척추기립근, 햄스트링, 둔근이 몸통 자세를 버텨야 하는 상당한 등척성 지지 요구가 수반됨.',
+        '상체를 숙인 채 중력에 대항하여 중량을 당기므로 척추기립근, 햄스트링, 둔근이 몸통 자세를 유지해야 하는 등척성 지지 요구가 수반됨.',
       erectorSpinaeContext:
-        '벤트오버 로우에서는 상체 지지대가 없어 척추기립근이 강력한 자세 유지근으로 동원되나, 이는 상체 당기기 주동근(광배/등상부)과 기능적으로 명확히 분리 기록됨.',
+        '벤트오버 로우에서는 상체 지지대가 없어 척추기립근이 자세 유지근으로 동원되나, 이는 상체 당기기 주동근(광배/등상부)과 기능적으로 명확히 분리 기록됨.',
     }),
     externalSupportOrVariation: Object.freeze({
       supportType: 'unsupported-free-weight',
       isChestSupported: false,
+      isReferenceBaselineProfile: true,
       isVariationExplicitlyVerified: true,
       variationDistinctionNotes:
         '체스트 서포티드 로우(Chest-Supported Row)나 인클라인 벤치 로우는 벤치가 상체를 지지하여 척추기립근 및 몸통 지지 요구가 최소화되지만, 본 프로필은 외부 지지대가 없는 자유 중량 바벨 벤트오버 로우 기준임. 기존 사전에 지지형 로우가 별도 정의되어 있지 않으므로 임의 변형으로 통합하지 않음.',
@@ -353,6 +358,7 @@ export const CANONICAL_EXERCISE_MUSCULOSKELETAL_PROFILES: Readonly<
     externalSupportOrVariation: Object.freeze({
       supportType: 'bodyweight-locomotion',
       isChestSupported: false,
+      isReferenceBaselineProfile: true,
       isVariationExplicitlyVerified: true,
       variationDistinctionNotes:
         '체중 부하 유산소 이동성 활동. 웨이트 트레이닝 세트 메커니즘을 갖지 않음.',
@@ -367,15 +373,21 @@ export const CANONICAL_EXERCISE_MUSCULOSKELETAL_PROFILES: Readonly<
 // =========================================================================
 
 /**
- * Normalizes input keys for case-insensitive, punctuation-tolerant lookup.
+ * Normalizes input strings for token/alias comparison.
  */
-function normalizeLookupKey(key: string): string {
+function normalizeKey(key: string): string {
   return key
     .toLowerCase()
     .trim()
-    .replace(/\([^)]*\)/g, '')
     .replace(/[\s\-_]+/g, '_')
     .replace(/[^a-z0-9_가-힣]/g, '');
+}
+
+/**
+ * Strips underscores and spacing for compact string matching.
+ */
+function stripCompact(key: string): string {
+  return normalizeKey(key).replace(/_/g, '');
 }
 
 /**
@@ -389,30 +401,98 @@ interface UnconfirmedVariationRule {
 
 const UNCONFIRMED_VARIATION_RULES: readonly UnconfirmedVariationRule[] = Object.freeze([
   Object.freeze({
-    patterns: ['chest_supported_row', '체스트서포티드로우', '체스트서포티드', 'chest_support'],
+    patterns: [
+      'chest_supported_row',
+      '체스트서포티드로우',
+      '체스트서포티드',
+      'chest_support',
+      'chest_supported',
+    ],
     matchedBaseCandidate: 'barbell_row',
     reason:
       '체스트 서포티드 로우는 상체 지지대로 인해 척추기립근 및 몸통 지지 요구가 현저히 감소하는 별도 변형입니다. 외부 지지가 없는 바벨 로우와 동일시할 수 없습니다.',
   }),
   Object.freeze({
-    patterns: ['rdl', 'romanian_deadlift', 'romaniandeadlift', '로마니안데드리프트', '로마니안'],
+    patterns: [
+      'rdl',
+      'romanian_deadlift',
+      'romaniandeadlift',
+      '로마니안데드리프트',
+      '로마니안',
+      'romanian',
+      'sumo_deadlift',
+      '스모데드리프트',
+      'sumo',
+      '스모',
+    ],
     matchedBaseCandidate: 'deadlift',
     reason:
-      '로마니안 데드리프트는 바닥 리셋과 초기 슬관절 신전이 없는 순수 힌지 신장성 변형입니다. 컨벤셔널 데드리프트와 동일시할 수 없습니다.',
+      '로마니안 데드리프트 및 스모 데드리프트는 가동 범위나 주동/안정근 관여가 상이한 별도 변형입니다. 컨벤셔널 데드리프트와 동일시할 수 없습니다.',
   }),
   Object.freeze({
-    patterns: ['incline_bench_press', 'incline_bench', '인클라인벤치프레스', '인클라인덤벨프레스'],
+    patterns: [
+      'incline_bench_press',
+      'incline_bench',
+      '인클라인벤치프레스',
+      '인클라인덤벨프레스',
+      'incline',
+      '인클라인',
+      'decline_bench_press',
+      '디클라인벤치프레스',
+      'decline',
+      '디클라인',
+    ],
     matchedBaseCandidate: 'bench_press',
     reason:
       '인클라인 프레스는 상완 거상 각도 변화로 쇄골지(상부 흉근) 및 전면 삼각근 관여 비중이 변하는 변형으로, 플랫 벤치프레스와 동일시할 수 없습니다.',
   }),
   Object.freeze({
-    patterns: ['seated_overhead_press', 'seated_ohp', '시티드오버헤드프레스', '시티드ohp'],
+    patterns: [
+      'seated_overhead_press',
+      'seated_ohp',
+      '시티드오버헤드프레스',
+      '시티드ohp',
+      'seated',
+      '시티드',
+      'seated_press',
+      '시티드프레스',
+    ],
     matchedBaseCandidate: 'overhead_press',
     reason:
       '시티드 OHP는 시트 지지로 인해 입식 직립 체간 안정화 요구가 감소하는 변형으로, 스탠딩 바벨 OHP와 동일시할 수 없습니다.',
   }),
+  Object.freeze({
+    patterns: [
+      'front_squat',
+      '프론트스쿼트',
+      'front',
+      '프론트',
+    ],
+    matchedBaseCandidate: 'squat',
+    reason:
+      '프론트 스쿼트는 상체 직립각 유지 및 대퇴사두근 집중도가 상이한 전면 바벨 거치 변형으로, 백스쿼트와 동일시할 수 없습니다.',
+  }),
 ]);
+
+/**
+ * Checks whether the input text matches any known unconfirmed variation rule.
+ */
+function findVariationMatch(text: string): UnconfirmedVariationRule | null {
+  const stripped = stripCompact(text);
+  if (!stripped) return null;
+
+  for (const rule of UNCONFIRMED_VARIATION_RULES) {
+    if (
+      rule.patterns.some((pat) => {
+        const cleanPat = stripCompact(pat);
+        return stripped === cleanPat || stripped.includes(cleanPat);
+      })
+    ) {
+      return rule;
+    }
+  }
+  return null;
+}
 
 /**
  * Supported alias mappings to the 6 canonical profiles.
@@ -425,12 +505,15 @@ const ALIAS_TO_CANONICAL_ID: Readonly<Record<string, string>> = Object.freeze({
   benchpress: 'bench_press',
   벤치프레스: 'bench_press',
   벤치: 'bench_press',
+  플랫벤치프레스: 'bench_press',
+  플랫_벤치프레스: 'bench_press',
 
   // Overhead Press
   overhead_press: 'overhead_press',
   overheadpress: 'overhead_press',
   ohp: 'overhead_press',
   standing_overhead_press: 'overhead_press',
+  standing_ohp: 'overhead_press',
   오버헤드프레스: 'overhead_press',
   오버헤드_프레스: 'overhead_press',
 
@@ -440,6 +523,8 @@ const ALIAS_TO_CANONICAL_ID: Readonly<Record<string, string>> = Object.freeze({
   barbell_squat: 'squat',
   스쿼트: 'squat',
   백스쿼트: 'squat',
+  바벨스쿼트: 'squat',
+  바벨_스쿼트: 'squat',
 
   // Deadlift (Conventional)
   deadlift: 'deadlift',
@@ -481,9 +566,9 @@ const ALIAS_TO_CANONICAL_ID: Readonly<Record<string, string>> = Object.freeze({
  *
  * Strict Taxonomy:
  * - 'supported': Matched one of the 6 canonical foundation exercises.
- * - 'unconfirmed-variation': Known distinct variant (e.g. chest-supported row, RDL)
+ * - 'unconfirmed-variation': Known distinct variant (e.g. chest-supported row, RDL, incline bench)
  *   that must not be collapsed into foundation lifts.
- * - 'unsupported': Unrecognized exercise or outside the 6 foundation exercises.
+ * - 'unsupported': Unrecognized exercise, unknown modifier in parentheses, or outside the 6 foundation exercises.
  *   (NEVER returns empty muscle sets or zero burden).
  * - 'empty-input': Query string is empty or whitespace.
  */
@@ -498,27 +583,71 @@ export function getExerciseMusculoskeletalProfile(
   }
 
   const rawKey = exerciseIdOrName.trim();
-  const normalized = normalizeLookupKey(rawKey);
-  const stripped = normalized.replace(/_/g, '');
 
-  // 1. Guard against unconfirmed variations first
-  for (const rule of UNCONFIRMED_VARIATION_RULES) {
-    if (
-      rule.patterns.some((pat) => {
-        const cleanPat = pat.replace(/_/g, '');
-        return stripped === cleanPat || stripped.includes(cleanPat);
-      })
-    ) {
+  // 1. Detect parenthesized components BEFORE stripping or normalizing
+  const parenMatch = rawKey.match(/^(.*?)\(([^)]+)\)(.*)$/);
+
+  if (parenMatch) {
+    const basePart = (parenMatch[1] + ' ' + parenMatch[3]).trim();
+    const bracketContent = parenMatch[2].trim();
+    const combinedContent = `${basePart} ${bracketContent}`.trim();
+
+    // Check if bracket content, base part, or combined string indicates an unconfirmed variation
+    const variationMatch =
+      findVariationMatch(bracketContent) ||
+      findVariationMatch(combinedContent) ||
+      findVariationMatch(basePart);
+
+    if (variationMatch) {
       return Object.freeze({
         status: 'unconfirmed-variation',
         queriedKey: rawKey,
-        matchedBaseCandidate: rule.matchedBaseCandidate,
-        reason: rule.reason,
+        matchedBaseCandidate: variationMatch.matchedBaseCandidate,
+        reason: variationMatch.reason,
       });
     }
+
+    // Check if the bracket content is a simple bilingual synonym/translation for the exact same base exercise
+    const normBase = normalizeKey(basePart);
+    const normBracket = normalizeKey(bracketContent);
+    const baseCanonicalId = ALIAS_TO_CANONICAL_ID[normBase];
+    const bracketCanonicalId = ALIAS_TO_CANONICAL_ID[normBracket];
+
+    if (
+      baseCanonicalId &&
+      bracketCanonicalId &&
+      baseCanonicalId === bracketCanonicalId &&
+      CANONICAL_EXERCISE_MUSCULOSKELETAL_PROFILES[baseCanonicalId]
+    ) {
+      // Confirmed exact bilingual synonym match (e.g., "벤치프레스 (Bench Press)", "오버헤드 프레스(Overhead Press)")
+      return Object.freeze({
+        status: 'supported',
+        profile: CANONICAL_EXERCISE_MUSCULOSKELETAL_PROFILES[baseCanonicalId],
+      });
+    }
+
+    // If the bracket modifier cannot be verified as an identical bilingual alias,
+    // do NOT arbitrarily assume or collapse it into the base lift. Return unsupported.
+    return Object.freeze({
+      status: 'unsupported',
+      queriedKey: rawKey,
+      reason: `운동 '${rawKey}'의 괄호 수식어 '${bracketContent}'은(는) 검증된 단순 한영 병기 표기가 아니며 기본 운동 프로필과 일치하지 않습니다. 기본 변형으로 임의 확정하지 않고 미지원 처리합니다.`,
+    });
   }
 
-  // 2. Match supported canonical ID or aliases
+  // 2. No parentheses: Guard against unconfirmed variations first
+  const variationMatch = findVariationMatch(rawKey);
+  if (variationMatch) {
+    return Object.freeze({
+      status: 'unconfirmed-variation',
+      queriedKey: rawKey,
+      matchedBaseCandidate: variationMatch.matchedBaseCandidate,
+      reason: variationMatch.reason,
+    });
+  }
+
+  // 3. Match supported canonical ID or aliases
+  const normalized = normalizeKey(rawKey);
   const canonicalId = ALIAS_TO_CANONICAL_ID[normalized];
   if (canonicalId && CANONICAL_EXERCISE_MUSCULOSKELETAL_PROFILES[canonicalId]) {
     return Object.freeze({
@@ -527,7 +656,7 @@ export function getExerciseMusculoskeletalProfile(
     });
   }
 
-  // 3. Fallback to explicit unsupported status
+  // 4. Fallback to explicit unsupported status
   return Object.freeze({
     status: 'unsupported',
     queriedKey: rawKey,
