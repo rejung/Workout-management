@@ -34,6 +34,7 @@ import { deriveCandidateReadinessEvidence } from './candidateReadiness';
 import { evaluateCandidateDecisionSet } from '../synthesis/todayDecision';
 import { deriveCandidateTrainingNeedEvidence } from '../need/candidateTrainingNeed';
 import { evaluateVNextProduction } from '../production/productionRecommendationService';
+import { DEFAULT_EXERCISES } from '../../../constants';
 import { WorkoutLog } from '../../../types';
 
 interface TestResult {
@@ -149,7 +150,7 @@ export function runTorsoSupportDemandTestSuite(): {
     );
 
     assert(
-      'Case B: 18h Barbell Row -> Deadlift preserves constrained status without stage elevation or hardblock',
+      'Unit Case B: 18h Barbell Row + 6h Squat -> Deadlift preserves constrained status without stage elevation or hardblock',
       dlReadiness.overallReadinessClass === 'constrained' &&
         dlReadiness.hardConstraintBoundary.isHardBlocked === false &&
         hasRowOverlap,
@@ -490,6 +491,501 @@ export function runTorsoSupportDemandTestSuite(): {
         isRowViable === true &&
         isBenchFirstPreferred === true,
       `RowReadiness: ${rowCand?.readinessEvidence.overallReadinessClass} (Decision: ${rowCand?.decisionClass}), BenchReadiness: ${benchCand?.readinessEvidence.overallReadinessClass} (Decision: ${benchCand?.decisionClass}), Preferred#1: ${candidateSet.todayDecision.preferredCandidates[0]?.candidateExerciseId}`
+    );
+  }
+
+  // =========================================================================
+  // OPERATIONAL INTEGRATION SUITE (evaluateVNextProduction + constants.ts IDs)
+  // =========================================================================
+  const defaultBarbellRow = DEFAULT_EXERCISES.find((e) => e.id === 'barbell-row')!;
+  const defaultDeadlift = DEFAULT_EXERCISES.find((e) => e.id === 'deadlift')!;
+  const defaultSquat = DEFAULT_EXERCISES.find((e) => e.id === 'squat')!;
+  const defaultBench = DEFAULT_EXERCISES.find((e) => e.id === 'bench-press')!;
+  const defaultRdl = DEFAULT_EXERCISES.find((e) => e.id === 'romanian-deadlift')!;
+  const defaultSeatedRow = DEFAULT_EXERCISES.find((e) => e.id === 'seated-row')!;
+  const defaultDumbbellRow = DEFAULT_EXERCISES.find((e) => e.id === 'dumbbell-row')!;
+
+  const prodEvalOpts = {
+    evaluationInstant: '2026-08-20T12:00:00+09:00',
+    calendarDate: '2026-08-20',
+    timezone: 'Asia/Seoul',
+  };
+
+  // =========================================================================
+  // Prod-A: Default ID barbell-row -> deadlift (caution when no direct constraint)
+  // =========================================================================
+  {
+    const logs: WorkoutLog[] = [
+      {
+        id: 'prod-log-row-only',
+        date: '2026-08-19',
+        startTime: '18:00',
+        routineName: '등 훈련',
+        notes: '',
+        exercises: [
+          {
+            exerciseId: defaultBarbellRow.id, // 'barbell-row'
+            exerciseName: defaultBarbellRow.name, // '바벨 로우 (Barbell Row)'
+            category: defaultBarbellRow.category,
+            sets: [{ id: 's1', reps: 8, weight: 70, isWarmup: false }],
+          },
+        ],
+      },
+    ];
+
+    const prodResult = evaluateVNextProduction(logs, prodEvalOpts);
+    const dlCand = prodResult.replayResult.candidateDecisionSet.candidates.find(
+      (c) => c.candidateExerciseId === 'deadlift'
+    );
+    const overlap = dlCand?.readinessEvidence.structuralOverlaps.find(
+      (o) => o.relation === 'torso-support-demand-overlap'
+    );
+
+    assert(
+      'Prod-A: Default ID barbell-row -> deadlift produces torso overlap and caution when direct dimensions are clear',
+      dlCand !== undefined &&
+        overlap !== undefined &&
+        overlap.sourceExerciseId === 'barbell-row' &&
+        overlap.sourceExerciseName === defaultBarbellRow.name &&
+        overlap.persistence === 'immediate' &&
+        dlCand.readinessEvidence.clearDimensions.includes('hip-posterior-chain') &&
+        dlCand.readinessEvidence.clearDimensions.includes('axial-systemic-loading') &&
+        dlCand.readinessEvidence.overallReadinessClass === 'caution',
+      `DL Readiness: ${dlCand?.readinessEvidence.overallReadinessClass}, SourceId: ${overlap?.sourceExerciseId}, SourceName: ${overlap?.sourceExerciseName}, Persistence: ${overlap?.persistence}`
+    );
+  }
+
+  // =========================================================================
+  // Prod-B: Default ID deadlift -> barbell_row candidate
+  // =========================================================================
+  {
+    const logs: WorkoutLog[] = [
+      {
+        id: 'prod-log-dl-only',
+        date: '2026-08-19',
+        startTime: '18:00',
+        routineName: '데드리프트 훈련',
+        notes: '',
+        exercises: [
+          {
+            exerciseId: defaultDeadlift.id, // 'deadlift'
+            exerciseName: defaultDeadlift.name, // '데드리프트 (Deadlift)'
+            category: defaultDeadlift.category,
+            sets: [{ id: 's1', reps: 5, weight: 140, isWarmup: false }],
+          },
+        ],
+      },
+    ];
+
+    const prodResult = evaluateVNextProduction(logs, prodEvalOpts);
+    const rowCand = prodResult.replayResult.candidateDecisionSet.candidates.find(
+      (c) => c.candidateExerciseId === 'barbell_row'
+    );
+    const overlap = rowCand?.readinessEvidence.structuralOverlaps.find(
+      (o) => o.relation === 'torso-support-demand-overlap'
+    );
+
+    assert(
+      'Prod-B: Default ID deadlift -> barbell_row preserves existing torso overlap direction and provenance',
+      rowCand !== undefined &&
+        overlap !== undefined &&
+        overlap.sourceExerciseId === 'deadlift' &&
+        overlap.sourceExerciseName === defaultDeadlift.name &&
+        overlap.persistence === 'immediate' &&
+        rowCand.readinessEvidence.clearDimensions.includes('horizontal-pull') &&
+        rowCand.readinessEvidence.overallReadinessClass === 'caution',
+      `Row Readiness: ${rowCand?.readinessEvidence.overallReadinessClass}, SourceId: ${overlap?.sourceExerciseId}, SourceName: ${overlap?.sourceExerciseName}`
+    );
+  }
+
+  // =========================================================================
+  // Prod-C: Same-day missing startTime deadlift -> barbell_row (uncertain, max caution, no contamination)
+  // =========================================================================
+  {
+    const logs: WorkoutLog[] = [
+      {
+        id: 'prod-log-dl-notime-today',
+        date: '2026-08-20',
+        // startTime omitted intentionally
+        routineName: '당일 시간 미지정 데드리프트',
+        notes: '',
+        exercises: [
+          {
+            exerciseId: defaultDeadlift.id,
+            exerciseName: defaultDeadlift.name,
+            category: defaultDeadlift.category,
+            sets: [{ id: 's1', reps: 5, weight: 140, isWarmup: false }],
+          },
+        ],
+      },
+    ];
+
+    const prodResult = evaluateVNextProduction(logs, prodEvalOpts);
+    const candidateSet = prodResult.replayResult.candidateDecisionSet;
+    const rowCand = candidateSet.candidates.find((c) => c.candidateExerciseId === 'barbell_row');
+    const dlCand = candidateSet.candidates.find((c) => c.candidateExerciseId === 'deadlift');
+    const squatCand = candidateSet.candidates.find((c) => c.candidateExerciseId === 'squat');
+    const ohpCand = candidateSet.candidates.find((c) => c.candidateExerciseId === 'overhead_press');
+
+    const rowOverlap = rowCand?.readinessEvidence.structuralOverlaps.find(
+      (o) => o.relation === 'torso-support-demand-overlap'
+    );
+    const tracesAreUncertain =
+      rowOverlap !== undefined &&
+      rowOverlap.sourceTraceRefs.length >= 2 &&
+      rowOverlap.sourceTraceRefs.every(
+        (t) =>
+          t.occurrenceState === 'occurrence-uncertain' &&
+          t.elapsedTime.kind === 'unavailable' &&
+          t.temporalAttenuation.kind === 'uncomputed'
+      );
+
+    // Must NOT be treated as completed session today, nor counted in eligible logs/volume/need,
+    // nor alter direct readiness of deadlift/squat/ohp
+    const notCompletedToday =
+      prodResult.decision.kind === 'train' &&
+      prodResult.replayResult.restDecisionEvidence.recentTrainingContext
+        .consecutiveTrainingDayContext.isSameDaySessionCompleted === false &&
+      prodResult.replayResult.restDecisionEvidence.recentTrainingContext.recentSessionCount === 0;
+    const notCountedInEligibleOrNeed =
+      prodResult.replayResult.availableHistoricalEvidenceCount.eligibleWorkoutLogCount === 0 &&
+      dlCand?.trainingNeedEvidence.historicalContext.totalHistoricalSessionCount === 0 &&
+      rowCand?.trainingNeedEvidence.historicalContext.totalHistoricalSessionCount === 0;
+    const otherDirectReadinessUnchanged =
+      dlCand?.readinessEvidence.overallReadinessClass === 'clear' &&
+      squatCand?.readinessEvidence.overallReadinessClass === 'clear' &&
+      ohpCand?.readinessEvidence.overallReadinessClass === 'clear';
+
+    // Forward projection (next day 2026-08-21) also uses the exact same evaluateSingleHistoricalPoint pipeline
+    // where 2026-08-20 becomes calendar-bounded prior date -> bracket overlap on barbell_row
+    const projRowCand = prodResult.projectedSession?.underlyingCandidateSet?.candidates.find(
+      (c) => c.candidateExerciseId === 'barbell_row'
+    );
+    const projHasTorsoOverlap = projRowCand?.readinessEvidence.structuralOverlaps.some(
+      (o) => o.relation === 'torso-support-demand-overlap' && o.persistence === 'bracket'
+    );
+
+    assert(
+      'Prod-C: Same-day missing-time deadlift -> row preserves uncertain overlap (max caution) without completed-session or direct-load contamination',
+      rowOverlap !== undefined &&
+        rowOverlap.persistence === 'uncertain' &&
+        tracesAreUncertain &&
+        rowCand?.readinessEvidence.overallReadinessClass === 'caution' &&
+        rowCand?.readinessEvidence.clearDimensions.includes('horizontal-pull') &&
+        notCompletedToday &&
+        notCountedInEligibleOrNeed &&
+        otherDirectReadinessUnchanged &&
+        projHasTorsoOverlap === true,
+      `RowReadiness: ${rowCand?.readinessEvidence.overallReadinessClass}, Persistence: ${rowOverlap?.persistence}, DecisionKind: ${prodResult.decision.kind}, EligibleLogs: ${prodResult.replayResult.availableHistoricalEvidenceCount.eligibleWorkoutLogCount}, DLReadiness: ${dlCand?.readinessEvidence.overallReadinessClass}, ProjBracketOverlap: ${projHasTorsoOverlap}`
+    );
+  }
+
+  // =========================================================================
+  // Prod-D: Future deadlift (same-day later & next-day) produces zero torso overlap
+  // =========================================================================
+  {
+    const logs: WorkoutLog[] = [
+      {
+        id: 'prod-log-dl-same-day-future',
+        date: '2026-08-20',
+        startTime: '18:00', // 6h AFTER eval 12:00
+        routineName: '당일 미래 데드리프트',
+        notes: '',
+        exercises: [
+          {
+            exerciseId: defaultDeadlift.id,
+            exerciseName: defaultDeadlift.name,
+            category: defaultDeadlift.category,
+            sets: [{ id: 's1', reps: 5, weight: 140, isWarmup: false }],
+          },
+        ],
+      },
+      {
+        id: 'prod-log-dl-next-day-future',
+        date: '2026-08-21',
+        // no startTime, future calendar day
+        routineName: '익일 미래 데드리프트',
+        notes: '',
+        exercises: [
+          {
+            exerciseId: defaultDeadlift.id,
+            exerciseName: defaultDeadlift.name,
+            category: defaultDeadlift.category,
+            sets: [{ id: 's2', reps: 5, weight: 140, isWarmup: false }],
+          },
+        ],
+      },
+    ];
+
+    const prodResult = evaluateVNextProduction(logs, prodEvalOpts);
+    const rowCand = prodResult.replayResult.candidateDecisionSet.candidates.find(
+      (c) => c.candidateExerciseId === 'barbell_row'
+    );
+    const hasTorsoOverlap = rowCand?.readinessEvidence.structuralOverlaps.some(
+      (o) => o.relation === 'torso-support-demand-overlap'
+    );
+
+    assert(
+      'Prod-D: Future deadlift (same-day later & future date) produces zero torso overlap and remains clear',
+      hasTorsoOverlap === false &&
+        rowCand?.readinessEvidence.overallReadinessClass === 'clear' &&
+        prodResult.replayResult.availableHistoricalEvidenceCount.excludedFutureWorkoutLogCount === 2,
+      `HasTorsoOverlap: ${hasTorsoOverlap}, RowReadiness: ${rowCand?.readinessEvidence.overallReadinessClass}, ExcludedFutureLogs: ${prodResult.replayResult.availableHistoricalEvidenceCount.excludedFutureWorkoutLogCount}`
+    );
+  }
+
+  // =========================================================================
+  // Prod-E: Row only (caution) vs Row + recent Squat (constrained preserved)
+  // =========================================================================
+  {
+    const rowOnlyLog: WorkoutLog = {
+      id: 'prod-log-e-row',
+      date: '2026-08-19',
+      startTime: '18:00',
+      routineName: '등 훈련',
+      notes: '',
+      exercises: [
+        {
+          exerciseId: defaultBarbellRow.id,
+          exerciseName: defaultBarbellRow.name,
+          category: defaultBarbellRow.category,
+          sets: [{ id: 's1', reps: 8, weight: 75, isWarmup: false }],
+        },
+      ],
+    };
+
+    const recentSquatLog: WorkoutLog = {
+      id: 'prod-log-e-squat',
+      date: '2026-08-20',
+      startTime: '06:00',
+      routineName: '하체 훈련',
+      notes: '',
+      exercises: [
+        {
+          exerciseId: defaultSquat.id,
+          exerciseName: defaultSquat.name,
+          category: defaultSquat.category,
+          sets: [{ id: 's2', reps: 5, weight: 120, isWarmup: false }],
+        },
+      ],
+    };
+
+    const resRowOnly = evaluateVNextProduction([rowOnlyLog], prodEvalOpts);
+    const resRowPlusSquat = evaluateVNextProduction([rowOnlyLog, recentSquatLog], prodEvalOpts);
+
+    const dlRowOnly = resRowOnly.replayResult.candidateDecisionSet.candidates.find(
+      (c) => c.candidateExerciseId === 'deadlift'
+    );
+    const dlRowPlusSquat = resRowPlusSquat.replayResult.candidateDecisionSet.candidates.find(
+      (c) => c.candidateExerciseId === 'deadlift'
+    );
+
+    const rowOnlyHasOverlap = dlRowOnly?.readinessEvidence.structuralOverlaps.some(
+      (o) => o.relation === 'torso-support-demand-overlap' && o.sourceExerciseId === 'barbell-row'
+    );
+    const rowPlusSquatHasOverlap = dlRowPlusSquat?.readinessEvidence.structuralOverlaps.some(
+      (o) => o.relation === 'torso-support-demand-overlap' && o.sourceExerciseId === 'barbell-row'
+    );
+
+    assert(
+      'Prod-E: Row-only yields caution on Deadlift; Row + recent Squat preserves constrained without elevation or hardblock',
+      rowOnlyHasOverlap === true &&
+        dlRowOnly?.readinessEvidence.overallReadinessClass === 'caution' &&
+        rowPlusSquatHasOverlap === true &&
+        dlRowPlusSquat?.readinessEvidence.overallReadinessClass === 'constrained' &&
+        dlRowPlusSquat?.readinessEvidence.hardConstraintBoundary.isHardBlocked === false,
+      `RowOnly DL: ${dlRowOnly?.readinessEvidence.overallReadinessClass} (overlap=${rowOnlyHasOverlap}), Row+Squat DL: ${dlRowPlusSquat?.readinessEvidence.overallReadinessClass} (overlap=${rowPlusSquatHasOverlap}, hardBlocked=${dlRowPlusSquat?.readinessEvidence.hardConstraintBoundary.isHardBlocked})`
+    );
+  }
+
+  // =========================================================================
+  // Prod-F: Default ID vs Internal ID equivalence & variation/conflict rejection
+  // =========================================================================
+  {
+    const benchPastLog: WorkoutLog = {
+      id: 'prod-log-f-bench',
+      date: '2026-08-15',
+      startTime: '10:00',
+      routineName: '가슴',
+      notes: '',
+      exercises: [
+        {
+          exerciseId: defaultBench.id, // 'bench-press'
+          exerciseName: defaultBench.name,
+          category: defaultBench.category,
+          sets: [{ id: 'sb', reps: 5, weight: 90, isWarmup: false }],
+        },
+      ],
+    };
+
+    const dlPastLog: WorkoutLog = {
+      id: 'prod-log-f-dl-past',
+      date: '2026-08-15',
+      startTime: '11:00',
+      routineName: '데드리프트',
+      notes: '',
+      exercises: [
+        {
+          exerciseId: defaultDeadlift.id,
+          exerciseName: defaultDeadlift.name,
+          category: defaultDeadlift.category,
+          sets: [{ id: 'sd', reps: 5, weight: 140, isWarmup: false }],
+        },
+      ],
+    };
+
+    const rowDefaultIdLog: WorkoutLog = {
+      id: 'prod-log-f-row-default',
+      date: '2026-08-19',
+      startTime: '18:00',
+      routineName: '등',
+      notes: '',
+      exercises: [
+        {
+          exerciseId: defaultBarbellRow.id, // 'barbell-row'
+          exerciseName: defaultBarbellRow.name, // '바벨 로우 (Barbell Row)'
+          category: defaultBarbellRow.category,
+          sets: [{ id: 'sr1', reps: 8, weight: 70, isWarmup: false }],
+        },
+      ],
+    };
+
+    const rowInternalIdLog: WorkoutLog = {
+      id: 'prod-log-f-row-internal',
+      date: '2026-08-19',
+      startTime: '18:00',
+      routineName: '등',
+      notes: '',
+      exercises: [
+        {
+          exerciseId: 'barbell_row',
+          exerciseName: '바벨 로우',
+          category: 'Back',
+          sets: [{ id: 'sr2', reps: 8, weight: 70, isWarmup: false }],
+        },
+      ],
+    };
+
+    const resDefault = evaluateVNextProduction([benchPastLog, dlPastLog, rowDefaultIdLog], prodEvalOpts);
+    const resInternal = evaluateVNextProduction([benchPastLog, dlPastLog, rowInternalIdLog], prodEvalOpts);
+
+    const dlFromDefault = resDefault.replayResult.candidateDecisionSet.candidates.find(
+      (c) => c.candidateExerciseId === 'deadlift'
+    );
+    const dlFromInternal = resInternal.replayResult.candidateDecisionSet.candidates.find(
+      (c) => c.candidateExerciseId === 'deadlift'
+    );
+
+    const equivalenceMatched =
+      dlFromDefault?.readinessEvidence.overallReadinessClass === 'caution' &&
+      dlFromInternal?.readinessEvidence.overallReadinessClass === 'caution' &&
+      dlFromDefault?.decisionClass === dlFromInternal?.decisionClass &&
+      dlFromDefault?.readinessEvidence.structuralOverlaps[0]?.sourceExerciseId === 'barbell-row' &&
+      dlFromInternal?.readinessEvidence.structuralOverlaps[0]?.sourceExerciseId === 'barbell_row' &&
+      resDefault.decision.kind === resInternal.decision.kind &&
+      resDefault.decision.primaryCandidate?.candidateExerciseId ===
+        resInternal.decision.primaryCandidate?.candidateExerciseId;
+
+    // Variations, unsupported IDs with supported names, and ID/name conflicts must all be rejected
+    const quarantineLogs: WorkoutLog[] = [
+      {
+        id: 'prod-log-q-rdl',
+        date: '2026-08-19',
+        startTime: '18:00',
+        routineName: 'RDL',
+        notes: '',
+        exercises: [
+          {
+            exerciseId: defaultRdl.id, // 'romanian-deadlift'
+            exerciseName: defaultRdl.name,
+            category: defaultRdl.category,
+            sets: [{ id: 'sq1', reps: 8, weight: 100, isWarmup: false }],
+          },
+        ],
+      },
+      {
+        id: 'prod-log-q-seated-row',
+        date: '2026-08-19',
+        startTime: '18:00',
+        routineName: 'Seated Row',
+        notes: '',
+        exercises: [
+          {
+            exerciseId: defaultSeatedRow.id, // 'seated-row'
+            exerciseName: defaultSeatedRow.name,
+            category: defaultSeatedRow.category,
+            sets: [{ id: 'sq2', reps: 10, weight: 60, isWarmup: false }],
+          },
+        ],
+      },
+      {
+        id: 'prod-log-q-db-row',
+        date: '2026-08-19',
+        startTime: '18:00',
+        routineName: 'DB Row',
+        notes: '',
+        exercises: [
+          {
+            exerciseId: defaultDumbbellRow.id, // 'dumbbell-row'
+            exerciseName: defaultDumbbellRow.name,
+            category: defaultDumbbellRow.category,
+            sets: [{ id: 'sq3', reps: 10, weight: 30, isWarmup: false }],
+          },
+        ],
+      },
+      {
+        id: 'prod-log-q-unsupported-id-supported-name',
+        date: '2026-08-19',
+        startTime: '18:00',
+        routineName: 'Custom Row',
+        notes: '',
+        exercises: [
+          {
+            exerciseId: 'custom-unmapped-row-id',
+            exerciseName: defaultBarbellRow.name, // Supported name MUST NOT rescue unsupported ID
+            category: 'Back',
+            sets: [{ id: 'sq4', reps: 8, weight: 60, isWarmup: false }],
+          },
+        ],
+      },
+      {
+        id: 'prod-log-q-conflict-id-name',
+        date: '2026-08-19',
+        startTime: '18:00',
+        routineName: 'Conflict',
+        notes: '',
+        exercises: [
+          {
+            exerciseId: defaultBarbellRow.id, // 'barbell-row'
+            exerciseName: '체스트 서포티드 로우', // Variant conflict in name
+            category: 'Back',
+            sets: [{ id: 'sq5', reps: 8, weight: 60, isWarmup: false }],
+          },
+          {
+            exerciseId: defaultDeadlift.id, // 'deadlift'
+            exerciseName: defaultBarbellRow.name, // Cross-exercise conflict in name
+            category: 'Back',
+            sets: [{ id: 'sq6', reps: 5, weight: 100, isWarmup: false }],
+          },
+        ],
+      },
+    ];
+
+    const resQuarantine = evaluateVNextProduction(quarantineLogs, prodEvalOpts);
+    const qDl = resQuarantine.replayResult.candidateDecisionSet.candidates.find(
+      (c) => c.candidateExerciseId === 'deadlift'
+    );
+    const qRow = resQuarantine.replayResult.candidateDecisionSet.candidates.find(
+      (c) => c.candidateExerciseId === 'barbell_row'
+    );
+    const quarantinePassed =
+      !qDl?.readinessEvidence.structuralOverlaps.some((o) => o.relation === 'torso-support-demand-overlap') &&
+      !qRow?.readinessEvidence.structuralOverlaps.some((o) => o.relation === 'torso-support-demand-overlap');
+
+    assert(
+      'Prod-F: Default ID and internal ID produce identical outcomes while variations, unsupported IDs, and conflicts stay blocked',
+      equivalenceMatched && quarantinePassed,
+      `Equivalence: ${equivalenceMatched} (DefaultPrimary=${resDefault.decision.primaryCandidate?.candidateExerciseId}, InternalPrimary=${resInternal.decision.primaryCandidate?.candidateExerciseId}), QuarantinePassed: ${quarantinePassed}`
     );
   }
 

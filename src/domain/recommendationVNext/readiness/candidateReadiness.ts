@@ -79,20 +79,28 @@ export const DEFAULT_FOUNDATION_CANDIDATE_IDS: readonly string[] = Object.freeze
  *    - Lookups must return 'supported' (no unconfirmed variations or unsupported exercises).
  *    - Source ID and Name must not contradict each other.
  */
+export interface CandidateReadinessOptions {
+  /**
+   * Optional same-day missing-startTime uncertain traces kept strictly separate
+   * from definite historical dimension residual states. Consumed exclusively by
+   * torso-support-demand-overlap without altering direct dimension readiness,
+   * training need, session completion, or rest decision policies.
+   */
+  readonly uncertainStructuralTraces?: readonly ResidualStressTrace[];
+}
+
 function isEligibleTorsoSupportDemandOverlapPair(
   sourceExerciseId: string,
   sourceExerciseName: string,
   candidateExerciseId: string
-): { eligible: boolean; sourceCanonicalName?: string; rejectionReason?: string } {
-  // Only the two explicit bidirectional pairs are supported
-  const isDeadliftToRow = sourceExerciseId === 'deadlift' && candidateExerciseId === 'barbell_row';
-  const isRowToDeadlift = sourceExerciseId === 'barbell_row' && candidateExerciseId === 'deadlift';
-
-  if (!isDeadliftToRow && !isRowToDeadlift) {
-    return { eligible: false };
-  }
-
-  // 1. Verify candidate profile in musculoskeletal relation table
+): {
+  eligible: boolean;
+  sourceCanonicalId?: string;
+  candidateCanonicalId?: string;
+  sourceCanonicalName?: string;
+  rejectionReason?: string;
+} {
+  // 1. Verify candidate profile in musculoskeletal relation table first
   const candidateLookup = getExerciseMusculoskeletalProfile(candidateExerciseId);
   if (candidateLookup.status !== 'supported') {
     return {
@@ -101,11 +109,17 @@ function isEligibleTorsoSupportDemandOverlapPair(
     };
   }
 
-  // 2. Verify source exercise ID and source exercise name in musculoskeletal relation table
+  const cProf = candidateLookup.profile;
+  if (cProf.exerciseId !== 'barbell_row' && cProf.exerciseId !== 'deadlift') {
+    return { eligible: false };
+  }
+
+  // 2. Verify BOTH source exercise ID and source exercise name in musculoskeletal relation table.
+  // Never fall back to name alone when sourceExerciseId is unsupported or an unconfirmed variation.
   const sourceIdLookup = getExerciseMusculoskeletalProfile(sourceExerciseId);
   const sourceNameLookup = getExerciseMusculoskeletalProfile(sourceExerciseName);
 
-  // If source ID or name indicates an unconfirmed variation (e.g. RDL, chest-supported row)
+  // Reject unconfirmed variations (e.g. RDL, chest-supported row, seated row)
   if (
     sourceIdLookup.status === 'unconfirmed-variation' ||
     sourceNameLookup.status === 'unconfirmed-variation'
@@ -132,9 +146,18 @@ function isEligibleTorsoSupportDemandOverlapPair(
   }
 
   const sProf = sourceIdLookup.profile;
-  const cProf = candidateLookup.profile;
 
-  // Confirm kinesiological torso support contract
+  // 3. Compare canonical profile IDs strictly against the two explicitly allowed directions
+  const isDeadliftToRow =
+    sProf.exerciseId === 'deadlift' && cProf.exerciseId === 'barbell_row';
+  const isRowToDeadlift =
+    sProf.exerciseId === 'barbell_row' && cProf.exerciseId === 'deadlift';
+
+  if (!isDeadliftToRow && !isRowToDeadlift) {
+    return { eligible: false };
+  }
+
+  // 4. Confirm kinesiological torso support contract from musculoskeletal SSOT
   const sHasErectorStabilizer = sProf.muscleInvolvements.some(
     (m) => m.regionId === 'erector-spinae' && m.role === 'stabilizer'
   );
@@ -142,11 +165,15 @@ function isEligibleTorsoSupportDemandOverlapPair(
     (m) => m.regionId === 'erector-spinae' && m.role === 'stabilizer'
   );
 
-  const sHighTorsoSupport = sProf.torsoSupportDemand.demandLevel === 'high-isometric-stabilization';
-  const cHighTorsoSupport = cProf.torsoSupportDemand.demandLevel === 'high-isometric-stabilization';
+  const sHighTorsoSupport =
+    sProf.torsoSupportDemand.demandLevel === 'high-isometric-stabilization';
+  const cHighTorsoSupport =
+    cProf.torsoSupportDemand.demandLevel === 'high-isometric-stabilization';
 
-  const sUnsupportedWeight = sProf.externalSupportOrVariation.supportType === 'unsupported-free-weight';
-  const cUnsupportedWeight = cProf.externalSupportOrVariation.supportType === 'unsupported-free-weight';
+  const sUnsupportedWeight =
+    sProf.externalSupportOrVariation.supportType === 'unsupported-free-weight';
+  const cUnsupportedWeight =
+    cProf.externalSupportOrVariation.supportType === 'unsupported-free-weight';
 
   if (
     !sHasErectorStabilizer ||
@@ -158,12 +185,15 @@ function isEligibleTorsoSupportDemandOverlapPair(
   ) {
     return {
       eligible: false,
-      rejectionReason: 'Musculoskeletal profile requirements for torso support demand overlap are not fully satisfied.',
+      rejectionReason:
+        'Musculoskeletal profile requirements for torso support demand overlap are not fully satisfied.',
     };
   }
 
   return {
     eligible: true,
+    sourceCanonicalId: sProf.exerciseId,
+    candidateCanonicalId: cProf.exerciseId,
     sourceCanonicalName: sProf.canonicalName,
   };
 }
@@ -179,7 +209,8 @@ function deriveStructuralReadinessOverlaps(
   candidateExerciseId: string,
   candidateExerciseName: string,
   requiredDimensions: readonly StressDimension[],
-  allDimensionResidualStates: AllDimensionResidualStates
+  allDimensionResidualStates: AllDimensionResidualStates,
+  uncertainStructuralTraces?: readonly ResidualStressTrace[]
 ): readonly StructuralReadinessOverlap[] {
   const overlaps: StructuralReadinessOverlap[] = [];
 
@@ -322,15 +353,18 @@ function deriveStructuralReadinessOverlaps(
   // -------------------------------------------------------------------------
   // Check 2: 'torso-support-demand-overlap' between deadlift and barbell_row (Phase 2)
   // -------------------------------------------------------------------------
+  const candidateMusculoLookup = getExerciseMusculoskeletalProfile(candidateExerciseId);
+  const candidateCanonicalId =
+    candidateMusculoLookup.status === 'supported'
+      ? candidateMusculoLookup.profile.exerciseId
+      : undefined;
   const isDeadliftOrRowCandidate =
-    candidateExerciseId === 'barbell_row' || candidateExerciseId === 'deadlift';
+    candidateCanonicalId === 'barbell_row' || candidateCanonicalId === 'deadlift';
 
   if (isDeadliftOrRowCandidate) {
-    const targetSourceExerciseId =
-      candidateExerciseId === 'barbell_row' ? 'deadlift' : 'barbell_row';
-
     // Collect distinct source workout sessions across all dimension states
-    // Group by unique session key to prevent duplicate overlaps from multi-dimension projections
+    // plus any separately passed same-day missing-time uncertain traces.
+    // Group by unique session key to prevent duplicate overlaps from multi-dimension projections.
     const sessionMap = new Map<
       string,
       {
@@ -343,53 +377,68 @@ function deriveStructuralReadinessOverlaps(
       }
     >();
 
+    const registerStrengthTrace = (trace: ResidualStressTrace) => {
+      // Strictly exclude future / ineligible evidence
+      if (
+        trace.occurrenceState === 'future-evidence' ||
+        trace.temporalAttenuation.kind === 'ineligible'
+      ) {
+        return;
+      }
+
+      if (trace.sourceEvidence.kind !== 'dimension-projected-strength-stress') {
+        return;
+      }
+
+      const mag = trace.sourceEvidence.sourceSessionMagnitude;
+      const logId =
+        mag.sourceLogId ||
+        `${mag.date}_${mag.startTime || 'notime'}_${mag.exerciseId}`;
+      const sessionKey = `${logId}::${mag.exerciseId}::${mag.exerciseName}`;
+
+      if (!sessionMap.has(sessionKey)) {
+        sessionMap.set(sessionKey, {
+          sourceLogId: mag.sourceLogId,
+          exerciseId: mag.exerciseId,
+          exerciseName: mag.exerciseName,
+          date: mag.date,
+          startTime: mag.startTime,
+          traces: [],
+        });
+      }
+
+      const traceKey = `${trace.sourceEvidence.dimension}::${trace.sourceEvidence.kind}::${trace.occurrenceState}`;
+      const existingTraces = sessionMap.get(sessionKey)!.traces;
+      if (
+        !existingTraces.some((t) => {
+          const tKey = `${t.sourceEvidence.dimension}::${t.sourceEvidence.kind}::${t.occurrenceState}`;
+          return tKey === traceKey;
+        })
+      ) {
+        existingTraces.push(trace);
+      }
+    };
+
     for (const dimState of Object.values(allDimensionResidualStates)) {
       for (const trace of dimState.relevantTraces) {
-        if (trace.sourceEvidence.kind === 'dimension-projected-strength-stress') {
-          const mag = trace.sourceEvidence.sourceSessionMagnitude;
-          const normExId = mag.exerciseId.toLowerCase().trim();
-          const normExName = mag.exerciseName.toLowerCase().trim();
+        registerStrengthTrace(trace);
+      }
+    }
 
-          const isPotentialSource =
-            normExId === targetSourceExerciseId ||
-            normExName.includes('deadlift') ||
-            normExName.includes('데드리프트') ||
-            normExName.includes('row') ||
-            normExName.includes('로우');
-
-          if (isPotentialSource) {
-            const logId =
-              mag.sourceLogId ||
-              `${mag.date}_${mag.startTime || 'notime'}_${mag.exerciseId}`;
-            const sessionKey = `${logId}::${mag.exerciseId}`;
-
-            if (!sessionMap.has(sessionKey)) {
-              sessionMap.set(sessionKey, {
-                sourceLogId: mag.sourceLogId,
-                exerciseId: mag.exerciseId,
-                exerciseName: mag.exerciseName,
-                date: mag.date,
-                startTime: mag.startTime,
-                traces: [],
-              });
-            }
-
-            const traceKey = `${trace.sourceEvidence.dimension}::${trace.sourceEvidence.kind}`;
-            const existingTraces = sessionMap.get(sessionKey)!.traces;
-            if (
-              !existingTraces.some((t) => {
-                const tKey = `${t.sourceEvidence.dimension}::${t.sourceEvidence.kind}`;
-                return tKey === traceKey;
-              })
-            ) {
-              existingTraces.push(trace);
-            }
-          }
+    // Consume separately provided same-day missing-time uncertain traces
+    // strictly guarded to occurrence-uncertain / uncomputed only.
+    if (uncertainStructuralTraces && uncertainStructuralTraces.length > 0) {
+      for (const trace of uncertainStructuralTraces) {
+        if (
+          trace.occurrenceState === 'occurrence-uncertain' &&
+          trace.temporalAttenuation.kind === 'uncomputed'
+        ) {
+          registerStrengthTrace(trace);
         }
       }
     }
 
-    // Evaluate each candidate source session against the contract
+    // Evaluate each distinct strength session against the musculoskeletal SSOT contract
     for (const session of sessionMap.values()) {
       const eligibility = isEligibleTorsoSupportDemandOverlapPair(
         session.exerciseId,
@@ -397,7 +446,7 @@ function deriveStructuralReadinessOverlaps(
         candidateExerciseId
       );
 
-      if (eligibility.eligible && eligibility.sourceCanonicalName) {
+      if (eligibility.eligible && eligibility.candidateCanonicalId) {
         let persistence: PersistenceState | 'bracket' | 'uncertain' =
           'historical';
         if (
@@ -431,7 +480,11 @@ function deriveStructuralReadinessOverlaps(
         }
 
         const rationale =
-          candidateExerciseId === 'barbell_row'
+          persistence === 'uncertain'
+            ? eligibility.candidateCanonicalId === 'barbell_row'
+              ? '당일 시간 미지정 데드리프트 기록과 몸통 지지 요구가 겹칠 수 있습니다.'
+              : '당일 시간 미지정 바벨 로우 기록과 몸통 지지 요구가 겹칠 수 있습니다.'
+            : eligibility.candidateCanonicalId === 'barbell_row'
             ? '최근 데드리프트 기록과 몸통 지지 요구가 겹칩니다.'
             : '최근 바벨 로우 기록과 몸통 지지 요구가 겹칩니다.';
 
@@ -439,7 +492,7 @@ function deriveStructuralReadinessOverlaps(
           Object.freeze({
             relation: 'torso-support-demand-overlap',
             sourceExerciseId: session.exerciseId,
-            sourceExerciseName: eligibility.sourceCanonicalName,
+            sourceExerciseName: session.exerciseName,
             sourceLogId: session.sourceLogId,
             persistence,
             sourceTraceRefs: Object.freeze([...session.traces]),
@@ -657,7 +710,8 @@ function buildExplainabilitySummary(
 export function deriveCandidateReadinessEvidence(
   candidate: string | ExerciseStressProfile,
   allDimensionResidualStates: AllDimensionResidualStates,
-  evaluationContext: EvaluationContext
+  evaluationContext: EvaluationContext,
+  options?: CandidateReadinessOptions
 ): CandidateReadinessEvidence {
   const profile: ExerciseStressProfile =
     typeof candidate === 'string'
@@ -770,7 +824,8 @@ export function deriveCandidateReadinessEvidence(
     candidateExerciseId,
     candidateExerciseName,
     requiredDimensions,
-    allDimensionResidualStates
+    allDimensionResidualStates,
+    options?.uncertainStructuralTraces
   );
   const activeStructuralOverlaps = structuralOverlaps.filter(
     (o) => o.persistence !== 'historical'

@@ -20,7 +20,10 @@
 import { AllDimensionResidualStates } from '../types/dimensionResidualState.types';
 import { StressMagnitudeInput } from '../types/stressMagnitudeInput.types';
 import { CanonicalRunningSession } from '../types/running.types';
-import { EvaluationContext } from '../types/residualStressTrace.types';
+import {
+  EvaluationContext,
+  ResidualStressTrace,
+} from '../types/residualStressTrace.types';
 import {
   CandidateDecisionEvaluationSet,
   CandidateDecisionEvidence,
@@ -46,12 +49,22 @@ import { deriveRestDecisionEvidence } from '../rest/restDecisionEvidence';
  * @param runningSessions Optional canonical running sessions
  * @param evaluationContext Canonical evaluation context SSOT
  */
+export interface EvaluateCandidateDecisionSetOptions {
+  /**
+   * Optional same-day missing-startTime uncertain traces kept strictly separate
+   * from definite historical sessions and dimension residual states.
+   * Passed solely to deriveCandidateReadinessEvidence for structural overlap evaluation.
+   */
+  readonly uncertainStructuralTraces?: readonly ResidualStressTrace[];
+}
+
 export function evaluateCandidateDecisionSet(
   candidateIds: readonly string[] = DEFAULT_FOUNDATION_CANDIDATE_IDS,
   allDimensionResidualStates: AllDimensionResidualStates,
   allHistoricalSessions: readonly StressMagnitudeInput[],
   evaluationContext: EvaluationContext,
-  runningSessions?: readonly CanonicalRunningSession[]
+  runningSessions?: readonly CanonicalRunningSession[],
+  options?: EvaluateCandidateDecisionSetOptions
 ): CandidateDecisionEvaluationSet {
   const candidateDecisions: CandidateDecisionEvidence[] = [];
   const candidateMap: Record<string, CandidateDecisionEvidence> = {};
@@ -61,7 +74,10 @@ export function evaluateCandidateDecisionSet(
     const readiness = deriveCandidateReadinessEvidence(
       candidateId,
       allDimensionResidualStates,
-      evaluationContext
+      evaluationContext,
+      options?.uncertainStructuralTraces
+        ? { uncertainStructuralTraces: options.uncertainStructuralTraces }
+        : undefined
     );
 
     // 2. Derive Training Need Evidence (CU4.1)

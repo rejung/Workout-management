@@ -765,7 +765,12 @@ export function auditCandidateReadiness(): readonly CandidateReadinessAuditResul
     const squatConstrained = evalSet.candidateMap.squat.overallReadinessClass === 'constrained';
     const deadliftConstrained = evalSet.candidateMap.deadlift.overallReadinessClass === 'constrained';
     const benchClear = evalSet.candidateMap.bench_press.overallReadinessClass === 'clear';
-    const rowClear = evalSet.candidateMap.barbell_row.overallReadinessClass === 'clear';
+    const rowCautionViaTorsoOverlap =
+      evalSet.candidateMap.barbell_row.overallReadinessClass === 'caution' &&
+      evalSet.candidateMap.barbell_row.clearDimensions.includes('horizontal-pull') &&
+      evalSet.candidateMap.barbell_row.structuralOverlaps.some(
+        (o) => o.relation === 'torso-support-demand-overlap'
+      );
     const ohpConstrained = evalSet.candidateMap.overhead_press.overallReadinessClass === 'constrained'; // has axial
 
     const passed =
@@ -774,7 +779,7 @@ export function auditCandidateReadiness(): readonly CandidateReadinessAuditResul
       squatConstrained &&
       deadliftConstrained &&
       benchClear &&
-      rowClear &&
+      rowCautionViaTorsoOverlap &&
       ohpConstrained &&
       Object.isFrozen(evalSet);
 

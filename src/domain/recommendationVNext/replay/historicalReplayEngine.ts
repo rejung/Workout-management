@@ -110,6 +110,7 @@ export function evaluateSingleHistoricalPoint(
   let excludedFutureCount = 0;
   let uncertainCount = 0;
   const eligibleInputs: StressMagnitudeInput[] = [];
+  const uncertainInputs: StressMagnitudeInput[] = [];
 
   for (const input of allInputs) {
     const eligibility = evaluateSessionTemporalEligibility(
@@ -121,6 +122,7 @@ export function evaluateSingleHistoricalPoint(
       excludedFutureCount += 1;
     } else if (eligibility.isUncertain) {
       uncertainCount += 1;
+      uncertainInputs.push(input);
     } else if (eligibility.isEligible) {
       eligibleInputs.push(input);
     }
@@ -160,10 +162,14 @@ export function evaluateSingleHistoricalPoint(
     return eligibility.isEligible;
   });
 
-  // 2. Build Residual States from eligible evidence
+  // 2. Build Residual States from definite eligible evidence only
   const projections = buildProjectedStressFromInputs(eligibleInputs);
   const traceCollection = deriveResidualStressTraces(projections, evalContext);
   const residualStates = deriveAllDimensionResidualStates(traceCollection.traces, evalContext);
+
+  // 2b. Derive same-day missing-time uncertain traces separately for structural overlap evaluation
+  const uncertainProjections = buildProjectedStressFromInputs(uncertainInputs);
+  const uncertainTraceCollection = deriveResidualStressTraces(uncertainProjections, evalContext);
 
   // 3. Evaluate Candidate Set & Today Decision
   const candidateSet = evaluateCandidateDecisionSet(
@@ -171,7 +177,10 @@ export function evaluateSingleHistoricalPoint(
     residualStates,
     eligibleInputs,
     evalContext,
-    eligibleRuns
+    eligibleRuns,
+    uncertainTraceCollection.uncertainTraces.length > 0
+      ? { uncertainStructuralTraces: uncertainTraceCollection.uncertainTraces }
+      : undefined
   );
 
   const todayDecision = deriveFinalTodayDecision(candidateSet);
@@ -326,6 +335,7 @@ export function runHistoricalReplay(
     let excludedFutureCount = 0;
     let uncertainCount = 0;
     const eligibleInputs: StressMagnitudeInput[] = [];
+    const uncertainInputs: StressMagnitudeInput[] = [];
 
     for (const input of allInputs) {
       const eligibility = evaluateSessionTemporalEligibility(
@@ -337,6 +347,7 @@ export function runHistoricalReplay(
         excludedFutureCount += 1;
       } else if (eligibility.isUncertain) {
         uncertainCount += 1;
+        uncertainInputs.push(input);
       } else if (eligibility.isEligible) {
         eligibleInputs.push(input);
       }
@@ -369,10 +380,14 @@ export function runHistoricalReplay(
       return eligibility.isEligible;
     });
 
-    // 2. Build Residual States from eligible evidence
+    // 2. Build Residual States from definite eligible evidence only
     const projections = buildProjectedStressFromInputs(eligibleInputs);
     const traceCollection = deriveResidualStressTraces(projections, evalContext);
     const residualStates = deriveAllDimensionResidualStates(traceCollection.traces, evalContext);
+
+    // 2b. Derive same-day missing-time uncertain traces separately for structural overlap evaluation
+    const uncertainProjections = buildProjectedStressFromInputs(uncertainInputs);
+    const uncertainTraceCollection = deriveResidualStressTraces(uncertainProjections, evalContext);
 
     // 3. Evaluate Candidate Set & Today Decision
     const candidateSet = evaluateCandidateDecisionSet(
@@ -380,7 +395,10 @@ export function runHistoricalReplay(
       residualStates,
       eligibleInputs,
       evalContext,
-      eligibleRuns
+      eligibleRuns,
+      uncertainTraceCollection.uncertainTraces.length > 0
+        ? { uncertainStructuralTraces: uncertainTraceCollection.uncertainTraces }
+        : undefined
     );
 
     const todayDecision = deriveFinalTodayDecision(candidateSet);
