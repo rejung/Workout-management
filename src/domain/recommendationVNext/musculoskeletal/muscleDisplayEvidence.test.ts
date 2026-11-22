@@ -22,7 +22,11 @@ import {
   CANONICAL_MUSCLE_REGIONS,
 } from '../types/exerciseMusculoskeletalProfile.types';
 import { MuscleDisplaySourceExerciseEvidence } from '../types/muscleDisplayEvidence.types';
-import { deriveMuscleDisplayEvidence } from './muscleDisplayEvidence';
+import {
+  deriveMuscleDisplayEvidence,
+  extractMuscleDisplaySourceExercisesFromLog,
+  extractMuscleDisplaySourceExercisesFromLogs,
+} from './muscleDisplayEvidence';
 
 interface TestResult {
   readonly name: string;
@@ -718,6 +722,252 @@ export function runMuscleDisplayEvidenceTestSuite(): {
       'T09: Directly consumes RecordedExerciseStressEvidence with 13 regions, 11 groups, deep immutability, and determinism',
       registryOk && frozenAndDeterministic,
       `regions=${out1.regions.length}, groups=${out1.displayGroups.length}, uninterpreted=${out1.uninterpretedExercises.length}, frozen=${Object.isFrozen(out1)}`
+    );
+  }
+
+  // =========================================================================
+  // T10: Mixed WorkoutLog (Bench Press + Treadmill) preserves BOTH exercises & unsupported items
+  // =========================================================================
+  {
+    const mixedBenchAndTreadmillLog: WorkoutLog = {
+      id: 'log-mixed-bench-treadmill-001',
+      date: '2026-08-19',
+      startTime: '18:30', // 17.5h ago -> immediate
+      routineName: '가슴 + 런닝',
+      notes: '',
+      exercises: [
+        {
+          exerciseId: defBench.id, // 'bench-press'
+          exerciseName: defBench.name, // '벤치프레스 (Bench Press)'
+          category: defBench.category,
+          sets: [{ id: 'mb1', weight: 80, reps: 5, isWarmup: false }],
+        },
+        {
+          exerciseId: defTreadmill.id, // 'treadmill'
+          exerciseName: defTreadmill.name, // '트레드밀 (Treadmill)'
+          category: defTreadmill.category,
+          sets: [{ id: 'mt1', weight: 0, reps: 0, distanceKm: 5, timeSeconds: 1500 }],
+        },
+      ],
+    };
+
+    const extractedTwo = extractMuscleDisplaySourceExercisesFromLog(mixedBenchAndTreadmillLog);
+    const outTwo = deriveMuscleDisplayEvidence(extractedTwo, fixedEvalContext);
+
+    const pec = outTwo.regionMap['pectoralis-major'];
+    const calves = outTwo.regionMap.calves;
+
+    const mixedTwoOk =
+      extractedTwo.length === 2 &&
+      Object.isFrozen(extractedTwo) &&
+      pec.status === '최근 부하' &&
+      pec.evidence.length === 1 &&
+      pec.evidence[0].sourceLogId === 'log-mixed-bench-treadmill-001' &&
+      pec.evidence[0].sourceExerciseId === 'bench-press' &&
+      pec.evidence[0].role === 'primary-target' &&
+      calves.status === '최근 부하' &&
+      calves.evidence.length === 1 &&
+      calves.evidence[0].sourceLogId === 'log-mixed-bench-treadmill-001' &&
+      calves.evidence[0].sourceExerciseId === 'treadmill' &&
+      calves.evidence[0].canonicalExerciseId === 'running' &&
+      calves.evidence[0].role === 'primary-target' &&
+      outTwo.provenanceSummary.interpretableExerciseCount === 2 &&
+      outTwo.provenanceSummary.distinctInterpretableLogCount === 1 &&
+      outTwo.provenanceSummary.uninterpretedExerciseCount === 0;
+
+    // Also verify unsupported exercise in a mixed log is forwarded & preserved as uninterpreted,
+    // and an empty-exercises log with routineName='러닝' does NOT fabricate a running item.
+    const mixedWithUnsupportedAndEmptyLogs: WorkoutLog[] = [
+      {
+        ...mixedBenchAndTreadmillLog,
+        id: 'log-mixed-with-cable-fly',
+        exercises: [
+          ...mixedBenchAndTreadmillLog.exercises,
+          {
+            exerciseId: defCableFly.id,
+            exerciseName: defCableFly.name,
+            category: defCableFly.category,
+            sets: [{ id: 'cf1', weight: 15, reps: 12, isWarmup: false }],
+          },
+        ],
+      },
+      {
+        id: 'log-empty-running-routine',
+        date: '2026-08-19',
+        startTime: '19:00',
+        routineName: '러닝',
+        notes: '',
+        exercises: [],
+      },
+    ];
+
+    const extractedMulti = extractMuscleDisplaySourceExercisesFromLogs(
+      mixedWithUnsupportedAndEmptyLogs
+    );
+    const outMulti = deriveMuscleDisplayEvidence(extractedMulti, fixedEvalContext);
+
+    const unsupportedAndNoFabricationOk =
+      extractedMulti.length === 3 &&
+      outMulti.provenanceSummary.interpretableExerciseCount === 2 &&
+      outMulti.provenanceSummary.distinctInterpretableLogCount === 1 &&
+      outMulti.provenanceSummary.uninterpretedExerciseCount === 1 &&
+      outMulti.uninterpretedExercises[0].sourceExerciseId === 'cable-fly' &&
+      outMulti.uninterpretedExercises[0].category === 'unsupported';
+
+    assert(
+      'T10: Mixed WorkoutLog (Bench Press + Treadmill) preserves both pec and calves evidence (2 interpretable exercises, 1 log) and forwards unsupported items without fabricating empty running logs',
+      mixedTwoOk && unsupportedAndNoFabricationOk,
+      `pec=${pec.status}(${pec.evidence[0]?.sourceExerciseId}), calves=${calves.status}(${calves.evidence[0]?.sourceExerciseId}), interpretable=${outTwo.provenanceSummary.interpretableExerciseCount}, logs=${outTwo.provenanceSummary.distinctInterpretableLogCount}, mixedUninterpreted=${outMulti.provenanceSummary.uninterpretedExerciseCount}`
+    );
+  }
+
+  // =========================================================================
+  // T11: Invalid date/time quarantine ('n/a', '25:00', non-existent dates) without breaking valid items
+  // =========================================================================
+  {
+    const defSquat = DEFAULT_EXERCISES.find((e) => e.id === 'squat')!;
+    const inputs: MuscleDisplaySourceExerciseEvidence[] = [
+      // 1. Valid normal record -> must survive untouched
+      {
+        sourceLogId: 'log-valid-bench',
+        date: '2026-08-19',
+        startTime: '18:00', // 18h ago -> immediate
+        exerciseId: defBench.id,
+        exerciseName: defBench.name,
+      },
+      // 2. Valid dot-separated date & single-digit hour -> must still be supported
+      {
+        sourceLogId: 'log-valid-dot-date-row',
+        date: '2026.08.18',
+        startTime: '9:00:00', // 51h ago -> residual
+        exerciseId: defBarbellRow.id,
+        exerciseName: defBarbellRow.name,
+      },
+      // 3. Invalid explicit startTime: 'n/a' -> must NOT throw or become uncertain
+      {
+        sourceLogId: 'log-invalid-time-na',
+        date: '2026-08-20',
+        startTime: 'n/a',
+        exerciseId: defOhp.id,
+        exerciseName: defOhp.name,
+      },
+      // 4. Invalid explicit startTime: '25:00' -> must NOT roll over or become future
+      {
+        sourceLogId: 'log-invalid-time-2500',
+        date: '2026-08-19',
+        startTime: '25:00',
+        exerciseId: defDeadlift.id,
+        exerciseName: defDeadlift.name,
+      },
+      // 5. Non-existent calendar date: '2026-02-30' (with time) -> must NOT roll over to 2026-03-02
+      {
+        sourceLogId: 'log-invalid-date-feb30',
+        date: '2026-02-30',
+        startTime: '10:00',
+        exerciseId: defDeadlift.id,
+        exerciseName: defDeadlift.name,
+      },
+      // 6. Non-existent calendar date: '2026-04-31' (missing time) -> must NOT enter calendar-bounded
+      {
+        sourceLogId: 'log-invalid-date-apr31',
+        date: '2026-04-31',
+        exerciseId: defDeadlift.id,
+        exerciseName: defDeadlift.name,
+      },
+      // 7. Malformed date: 'n/a'
+      {
+        sourceLogId: 'log-invalid-date-na',
+        date: 'n/a',
+        startTime: '10:00',
+        exerciseId: defDeadlift.id,
+        exerciseName: defDeadlift.name,
+      },
+      // 8. Valid same-day missing time -> must stay uncertain ('판단 정보 부족')
+      {
+        sourceLogId: 'log-valid-same-day-notime-squat',
+        date: '2026-08-20',
+        exerciseId: defSquat.id,
+        exerciseName: defSquat.name,
+      },
+      // 9. Valid future time -> must stay in excludedFutureExercises (count = 1)
+      {
+        sourceLogId: 'log-valid-future-treadmill',
+        date: '2026-08-20',
+        startTime: '18:00',
+        exerciseId: defTreadmill.id,
+        exerciseName: defTreadmill.name,
+      },
+    ];
+
+    const out = deriveMuscleDisplayEvidence(inputs, fixedEvalContext);
+
+    const pec = out.regionMap['pectoralis-major'];
+    const lats = out.regionMap['latissimus-dorsi'];
+    const quads = out.regionMap.quadriceps;
+    const calves = out.regionMap.calves;
+    const latDelt = out.regionMap['lateral-deltoid'];
+
+    const validPreservedOk =
+      pec.status === '최근 부하' &&
+      pec.evidence.length === 1 &&
+      pec.evidence[0].sourceLogId === 'log-valid-bench' &&
+      lats.status === '잔여 부하' &&
+      lats.evidence.length === 1 &&
+      lats.evidence[0].sourceLogId === 'log-valid-dot-date-row' &&
+      lats.evidence[0].date === '2026.08.18' &&
+      lats.evidence[0].startTime === '9:00:00';
+
+    const invalidQuarantinedOk =
+      out.hasInvalidDateTimeExercises &&
+      out.invalidDateTimeExercises.length === 5 &&
+      out.provenanceSummary.invalidDateTimeExerciseCount === 5 &&
+      Object.isFrozen(out.invalidDateTimeExercises) &&
+      out.invalidDateTimeExercises.every(
+        (item) =>
+          item.category === 'invalid-datetime' && item.reason.includes('잘못된 날짜·시각')
+      ) &&
+      out.invalidDateTimeExercises.some(
+        (item) =>
+          item.sourceLogId === 'log-invalid-time-na' &&
+          item.date === '2026-08-20' &&
+          item.startTime === 'n/a'
+      ) &&
+      out.invalidDateTimeExercises.some(
+        (item) =>
+          item.sourceLogId === 'log-invalid-time-2500' &&
+          item.date === '2026-08-19' &&
+          item.startTime === '25:00'
+      ) &&
+      out.invalidDateTimeExercises.some(
+        (item) => item.sourceLogId === 'log-invalid-date-feb30' && item.date === '2026-02-30'
+      ) &&
+      out.invalidDateTimeExercises.some(
+        (item) => item.sourceLogId === 'log-invalid-date-apr31' && item.date === '2026-04-31'
+      ) &&
+      out.invalidDateTimeExercises.some(
+        (item) => item.sourceLogId === 'log-invalid-date-na' && item.date === 'n/a'
+      ) &&
+      // OHP with startTime='n/a' must NOT leak into lateral-deltoid as uncertain
+      latDelt.evidence.length === 0 &&
+      !latDelt.uncertainty.hasUncertainty;
+
+    const futureAndUncertainPreservedOk =
+      out.excludedFutureExercises.length === 1 &&
+      out.provenanceSummary.excludedFutureExerciseCount === 1 &&
+      out.excludedFutureExercises[0].sourceLogId === 'log-valid-future-treadmill' &&
+      calves.immediateEvidence.length === 0 &&
+      calves.evidence.every((e) => e.sourceLogId !== 'log-valid-future-treadmill') &&
+      quads.status === '판단 정보 부족' &&
+      quads.uncertainEvidence.length === 1 &&
+      quads.uncertainEvidence[0].sourceLogId === 'log-valid-same-day-notime-squat' &&
+      out.provenanceSummary.sameDayUncertainExerciseCount === 1 &&
+      out.provenanceSummary.interpretableExerciseCount === 3 &&
+      out.provenanceSummary.totalInputExerciseCount === 9;
+
+    assert(
+      'T11: Invalid dates/times (n/a, 25:00, 2026-02-30, 2026-04-31) are quarantined with raw values while valid records, same-day uncertain, and real future records remain intact',
+      validPreservedOk && invalidQuarantinedOk && futureAndUncertainPreservedOk,
+      `pec=${pec.status}, lats=${lats.status}, invalidCount=${out.invalidDateTimeExercises.length}, futureCount=${out.excludedFutureExercises.length}, sameDayUncertain=${out.provenanceSummary.sameDayUncertainExerciseCount}, interpretable=${out.provenanceSummary.interpretableExerciseCount}`
     );
   }
 

@@ -255,6 +255,16 @@ export interface MuscleDisplayExcludedFutureExercise {
   readonly reason: string;
 }
 
+export interface MuscleDisplayInvalidDateTimeExercise {
+  readonly sourceLogId: string;
+  readonly date: string;
+  readonly startTime?: string;
+  readonly sourceExerciseId: string;
+  readonly sourceExerciseName: string;
+  readonly category: 'invalid-datetime';
+  readonly reason: string;
+}
+
 export interface MuscleDisplayProvenanceSummary {
   /** Total pre-dimension exercise records received as input */
   readonly totalInputExerciseCount: number;
@@ -262,9 +272,11 @@ export interface MuscleDisplayProvenanceSummary {
   readonly interpretableExerciseCount: number;
   /** Distinct WorkoutLog IDs among interpretable exercise records (never recounts per muscle) */
   readonly distinctInterpretableLogCount: number;
-  /** Future exercise records excluded strictly */
+  /** Valid future exercise records excluded strictly */
   readonly excludedFutureExerciseCount: number;
-  /** Non-future exercise records that could not be mapped to any muscle */
+  /** Records quarantined due to invalid calendar date or malformed explicit startTime */
+  readonly invalidDateTimeExerciseCount: number;
+  /** Non-future exercise records with valid date/time that could not be mapped to any muscle */
   readonly uninterpretedExerciseCount: number;
   readonly unconfirmedVariationCount: number;
   readonly idNameConflictCount: number;
@@ -298,11 +310,14 @@ export interface MuscleDisplayEvidenceResult {
     Record<MuscleDisplayGroupId, MuscleDisplayGroupPresentation>
   >;
 
-  /** Non-future records that were NOT assigned to any muscle due to variation/conflict/unsupported status */
+  /** Non-future records with valid date/time that were NOT assigned to any muscle due to variation/conflict/unsupported status */
   readonly uninterpretedExercises: readonly MuscleDisplayUninterpretedExercise[];
 
-  /** Future records strictly excluded from muscle display evidence */
+  /** Valid future records strictly excluded from muscle display evidence */
   readonly excludedFutureExercises: readonly MuscleDisplayExcludedFutureExercise[];
+
+  /** Records quarantined due to invalid date or malformed explicit startTime (never auto-rolled or counted as future/uncertain) */
+  readonly invalidDateTimeExercises: readonly MuscleDisplayInvalidDateTimeExercise[];
 
   /** Factual record-level provenance summary (never double-counts across connected muscles) */
   readonly provenanceSummary: MuscleDisplayProvenanceSummary;
@@ -315,4 +330,7 @@ export interface MuscleDisplayEvidenceResult {
 
   /** True if any non-future uninterpreted exercises exist in the input */
   readonly hasUninterpretedExercises: boolean;
+
+  /** True if any input exercises were quarantined due to invalid date/time */
+  readonly hasInvalidDateTimeExercises: boolean;
 }

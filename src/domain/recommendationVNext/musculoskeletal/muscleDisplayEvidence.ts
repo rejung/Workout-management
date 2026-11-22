@@ -35,6 +35,7 @@
  * 6. Pure Immutability: Deeply frozen output with zero mutation of inputs.
  */
 
+import { WorkoutLog } from '../../../types';
 import {
   CANONICAL_MUSCLE_DISPLAY_GROUPS,
   CANONICAL_MUSCLE_REGIONS,
@@ -56,6 +57,7 @@ import {
   MuscleDisplayEvidenceResult,
   MuscleDisplayExcludedFutureExercise,
   MuscleDisplayGroupPresentation,
+  MuscleDisplayInvalidDateTimeExercise,
   MuscleDisplayProvenanceSummary,
   MuscleDisplaySourceExerciseEvidence,
   MuscleDisplayUninterpretedExercise,
@@ -83,8 +85,194 @@ const ROLE_DISPLAY_ORDER: readonly MuscleInvolvementRole[] = Object.freeze([
 ]);
 
 // =========================================================================
-// 1. Temporal Helpers (Reusing residualStressTrace SSOT)
+// 0. Display-Only WorkoutLog Input Extraction (Preserves Mixed Sessions)
 // =========================================================================
+
+/**
+ * Extracts display-only pre-dimension exercise inputs directly from a raw WorkoutLog.
+ *
+ * Invariants:
+ * - Iterates `log.exercises` verbatim so mixed strength + running/treadmill sessions
+ *   preserve EVERY recorded exercise (unlike deriveRecordedSessionStressEvidence's running branch).
+ * - Preserves original sourceLogId, date, startTime, exerciseId, and exerciseName verbatim.
+ * - Includes unsupported/variation exercises so downstream transformation preserves uninterpreted reasons.
+ * - Does NOT fabricate or infer exercises or running logs from routineName when `exercises` is empty.
+ * - Pure function: zero mutation of `log`, deeply frozen output.
+ */
+export function extractMuscleDisplaySourceExercisesFromLog(
+  log: Readonly<WorkoutLog>
+): readonly MuscleDisplaySourceExerciseEvidence[] {
+  if (!log || !Array.isArray(log.exercises) || log.exercises.length === 0) {
+    return Object.freeze([]);
+  }
+
+  const items: MuscleDisplaySourceExerciseEvidence[] = [];
+  for (const ex of log.exercises) {
+    if (!ex) {
+      continue;
+    }
+    items.push(
+      Object.freeze({
+        sourceLogId: log.id,
+        date: log.date,
+        startTime: log.startTime,
+        exerciseId: ex.exerciseId ?? '',
+        exerciseName: ex.exerciseName ?? '',
+      })
+    );
+  }
+
+  return Object.freeze(items);
+}
+
+/**
+ * Extracts display-only pre-dimension exercise inputs across multiple raw WorkoutLogs.
+ * Preserves all individual exercises across mixed sessions and distinct same-day logs without merging.
+ */
+export function extractMuscleDisplaySourceExercisesFromLogs(
+  logs: readonly Readonly<WorkoutLog>[]
+): readonly MuscleDisplaySourceExerciseEvidence[] {
+  if (!Array.isArray(logs) || logs.length === 0) {
+    return Object.freeze([]);
+  }
+
+  const items: MuscleDisplaySourceExerciseEvidence[] = [];
+  for (const log of logs) {
+    if (!log) {
+      continue;
+    }
+    const extracted = extractMuscleDisplaySourceExercisesFromLog(log);
+    for (const item of extracted) {
+      items.push(item);
+    }
+  }
+
+  return Object.freeze(items);
+}
+
+// =========================================================================
+// 1. Temporal Validation & Helpers (Reusing residualStressTrace SSOT)
+// =========================================================================
+
+const CALENDAR_DATE_PATTERN = /^(\d{4})([-.])(\d{1,2})\2(\d{1,2})$/;
+const WALL_CLOCK_TIME_PATTERN = /^(\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?$/;
+
+type ValidatedDateTimeResult =
+  | {
+      readonly kind: 'valid';
+      readonly canonicalDate: string;
+      readonly normalizedStartTime?: string;
+    }
+  | {
+      readonly kind: 'invalid';
+      readonly reason: string;
+    };
+
+/**
+ * Validates a source record's calendar date and optional explicit startTime strictly
+ * before invoking the shared wall-clock parser.
+ *
+ * - Supports existing valid formats: YYYY-MM-DD, YYYY.MM.DD (and single-digit M/D),
+ *   and H:mm / HH:mm / H:mm:ss / HH:mm:ss / HH:mm:ss.SSS.
+ * - Rejects non-existent calendar dates (e.g. 2026-02-30, 2026-04-31), malformed dates (e.g. 'n/a'),
+ *   and out-of-range or malformed explicit times (e.g. '25:00', '12:60', 'n/a')
+ *   without rolling over, throwing, or misclassifying as missing-time or future.
+ */
+function validateSourceDateAndTime(
+  rawDate: unknown,
+  rawStartTime: unknown
+): ValidatedDateTimeResult {
+  if (typeof rawDate !== 'string' || rawDate.trim().length === 0) {
+    return {
+      kind: 'invalid',
+      reason: `잘못된 날짜·시각: 날짜 값('${String(rawDate ?? '')}')이 비어 있거나 유효하지 않아 격리했습니다.`,
+    };
+  }
+
+  const trimmedDate = rawDate.trim();
+  const dateMatch = CALENDAR_DATE_PATTERN.exec(trimmedDate);
+  if (!dateMatch) {
+    return {
+      kind: 'invalid',
+      reason: `잘못된 날짜·시각: 날짜 형식('${rawDate}')이 올바르지 않아 격리했습니다.`,
+    };
+  }
+
+  const year = Number(dateMatch[1]);
+  const month = Number(dateMatch[3]);
+  const day = Number(dateMatch[4]);
+
+  if (month < 1 || month > 12 || day < 1 || day > 31) {
+    return {
+      kind: 'invalid',
+      reason: `잘못된 날짜·시각: 달력에 존재하지 않는 날짜('${rawDate}')로 인해 격리했습니다.`,
+    };
+  }
+
+  const calendarCheck = new Date(Date.UTC(year, month - 1, day));
+  if (
+    calendarCheck.getUTCFullYear() !== year ||
+    calendarCheck.getUTCMonth() !== month - 1 ||
+    calendarCheck.getUTCDate() !== day
+  ) {
+    return {
+      kind: 'invalid',
+      reason: `잘못된 날짜·시각: 달력에 존재하지 않는 날짜('${rawDate}')로 인해 격리했습니다.`,
+    };
+  }
+
+  const canonicalDate = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+  // Omitted / blank startTime -> valid missing time (preserves calendar-bounded / same-day uncertain semantics)
+  if (rawStartTime === undefined || rawStartTime === null) {
+    return {
+      kind: 'valid',
+      canonicalDate,
+      normalizedStartTime: undefined,
+    };
+  }
+
+  if (typeof rawStartTime !== 'string') {
+    return {
+      kind: 'invalid',
+      reason: `잘못된 날짜·시각: 시각 값('${String(rawStartTime)}')이 올바른 문자열 형식이 아니어 격리했습니다.`,
+    };
+  }
+
+  const trimmedTime = rawStartTime.trim();
+  if (trimmedTime.length === 0) {
+    return {
+      kind: 'valid',
+      canonicalDate,
+      normalizedStartTime: undefined,
+    };
+  }
+
+  const timeMatch = WALL_CLOCK_TIME_PATTERN.exec(trimmedTime);
+  if (!timeMatch) {
+    return {
+      kind: 'invalid',
+      reason: `잘못된 날짜·시각: 명시된 시각('${rawStartTime}')이 유효한 시각 형식이 아니어 격리했습니다.`,
+    };
+  }
+
+  const hour = Number(timeMatch[1]);
+  const minute = Number(timeMatch[2]);
+  const second = timeMatch[3] !== undefined ? Number(timeMatch[3]) : 0;
+
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) {
+    return {
+      kind: 'invalid',
+      reason: `잘못된 날짜·시각: 허용 범위를 벗어난 시각('${rawStartTime}')으로 인해 격리했습니다.`,
+    };
+  }
+
+  return {
+    kind: 'valid',
+    canonicalDate,
+    normalizedStartTime: trimmedTime,
+  };
+}
 
 function getPersistenceRank(state: PersistenceState | 'none'): number {
   switch (state) {
@@ -123,6 +311,10 @@ function normalizeEvaluationContext(
 
 type EvaluatedExerciseTemporalInfo =
   | {
+      readonly kind: 'invalid-datetime';
+      readonly reason: string;
+    }
+  | {
       readonly kind: 'future';
       readonly occurrenceState: 'future-evidence';
       readonly elapsedTime: ElapsedTime;
@@ -142,25 +334,43 @@ type EvaluatedExerciseTemporalInfo =
 
 /**
  * Evaluates the temporal occurrence and persistence state of a source exercise record
- * relative to the canonical EvaluationContext, strictly reusing residualStressTrace SSOT.
+ * relative to the canonical EvaluationContext, strictly validating date/time per item
+ * before delegating to the residualStressTrace SSOT.
  */
 function evaluateExerciseTemporalState(
   date: string,
   startTime: string | undefined,
   evalContext: EvaluationContext
 ): EvaluatedExerciseTemporalInfo {
+  const validation = validateSourceDateAndTime(date, startTime);
+  if (validation.kind === 'invalid') {
+    return {
+      kind: 'invalid-datetime',
+      reason: validation.reason,
+    };
+  }
+
   const evalInstantMs = new Date(evalContext.evaluationInstant).getTime();
-  const hasStartTime = typeof startTime === 'string' && startTime.trim().length > 0;
+  const canonicalDate = validation.canonicalDate;
+  const normalizedStartTime = validation.normalizedStartTime;
+  const hasStartTime = normalizedStartTime !== undefined;
 
   let occurrenceState: OccurrenceState;
   let elapsedTime: ElapsedTime;
 
   if (hasStartTime) {
     const { instantMs: evidenceInstantMs } = parseWallClockInTimezone(
-      date,
-      startTime!,
+      canonicalDate,
+      normalizedStartTime,
       evalContext.evaluationTimezone
     );
+
+    if (!Number.isFinite(evidenceInstantMs)) {
+      return {
+        kind: 'invalid-datetime',
+        reason: `잘못된 날짜·시각: 기록 일시('${date}' '${startTime}')를 유효한 시점으로 해석할 수 없어 격리했습니다.`,
+      };
+    }
 
     if (evidenceInstantMs <= evalInstantMs) {
       const elapsedSeconds = Math.max(0, Math.floor((evalInstantMs - evidenceInstantMs) / 1000));
@@ -181,7 +391,7 @@ function evaluateExerciseTemporalState(
       };
     }
   } else {
-    const evidenceDate = date.trim().replace(/\./g, '-');
+    const evidenceDate = canonicalDate;
     const evalDate = evalContext.evaluationCalendarDate;
 
     if (evidenceDate < evalDate) {
@@ -554,6 +764,7 @@ export function deriveMuscleDisplayEvidence(
 
   const uninterpretedExercises: MuscleDisplayUninterpretedExercise[] = [];
   const excludedFutureExercises: MuscleDisplayExcludedFutureExercise[] = [];
+  const invalidDateTimeExercises: MuscleDisplayInvalidDateTimeExercise[] = [];
 
   const interpretableLogIds = new Set<string>();
   let interpretableExerciseCount = 0;
@@ -565,8 +776,23 @@ export function deriveMuscleDisplayEvidence(
   let emptyInputCount = 0;
 
   for (const item of safeInputs) {
-    // 1. Evaluate temporal state first; strictly exclude future records
+    // 1. Validate date/time per item and evaluate temporal state; quarantine invalid or future records
     const temporal = evaluateExerciseTemporalState(item.date, item.startTime, evalContext);
+
+    if (temporal.kind === 'invalid-datetime') {
+      invalidDateTimeExercises.push(
+        Object.freeze({
+          sourceLogId: item.sourceLogId,
+          date: item.date,
+          startTime: item.startTime,
+          sourceExerciseId: item.exerciseId,
+          sourceExerciseName: item.exerciseName,
+          category: 'invalid-datetime',
+          reason: temporal.reason,
+        })
+      );
+      continue;
+    }
 
     if (temporal.kind === 'future') {
       excludedFutureExercises.push(
@@ -701,12 +927,14 @@ export function deriveMuscleDisplayEvidence(
 
   const hasTemporalUncertainty = regions.some((r) => r.uncertainty.hasUncertainty);
   const hasUninterpretedExercises = uninterpretedExercises.length > 0;
+  const hasInvalidDateTimeExercises = invalidDateTimeExercises.length > 0;
 
   const provenanceSummary: MuscleDisplayProvenanceSummary = Object.freeze({
     totalInputExerciseCount: safeInputs.length,
     interpretableExerciseCount,
     distinctInterpretableLogCount: interpretableLogIds.size,
     excludedFutureExerciseCount: excludedFutureExercises.length,
+    invalidDateTimeExerciseCount: invalidDateTimeExercises.length,
     uninterpretedExerciseCount: uninterpretedExercises.length,
     unconfirmedVariationCount,
     idNameConflictCount,
@@ -728,6 +956,10 @@ export function deriveMuscleDisplayEvidence(
     interpretationScopeNotice = `근육별 상태는 해석 가능한 기준 종목 기록 ${interpretableExerciseCount}건의 범위에 한정됩니다.`;
   }
 
+  if (hasInvalidDateTimeExercises) {
+    interpretationScopeNotice += ` 잘못된 날짜·시각 기록 ${invalidDateTimeExercises.length}건은 별도 격리했습니다.`;
+  }
+
   return Object.freeze({
     kind: 'muscle-display-evidence',
     evaluationContext: evalContext,
@@ -737,9 +969,11 @@ export function deriveMuscleDisplayEvidence(
     displayGroupMap,
     uninterpretedExercises: Object.freeze(uninterpretedExercises),
     excludedFutureExercises: Object.freeze(excludedFutureExercises),
+    invalidDateTimeExercises: Object.freeze(invalidDateTimeExercises),
     provenanceSummary,
     interpretationScopeNotice,
     hasTemporalUncertainty,
     hasUninterpretedExercises,
+    hasInvalidDateTimeExercises,
   });
 }
