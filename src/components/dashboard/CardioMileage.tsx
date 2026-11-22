@@ -9,6 +9,7 @@ import { RecommendationResult } from '../../utils/workoutEngine';
 import { formatNextRecommendationDate } from '../../utils/dateUtils';
 import { motion, AnimatePresence } from 'motion/react';
 import { BodyLoadMap } from './BodyLoadMap';
+import { MuscleDisplayEvidenceList } from './MuscleDisplayEvidenceList';
 
 interface RecommendedWorkoutCardProps {
   nextRecommendation?: RecommendationResult;
@@ -81,9 +82,10 @@ export function RecommendedWorkoutCard({
   // Reasons are only visible for workout recommendations (Train state), hidden for Rest
   const hasVisibleReasons = !isRest && Boolean(recommendation.reasons && recommendation.reasons.length > 0);
   const hasBodyLoad = Boolean(recommendation.bodyLoad);
+  const hasMuscleDisplayEvidence = Boolean(recommendation.muscleDisplayEvidence);
 
-  // Accordion should only render if there is actually visible content (visible reasons or bodyLoad)
-  const shouldShowAccordion = hasVisibleReasons || hasBodyLoad;
+  // Accordion should only render if there is actually visible content (visible reasons, bodyLoad, or muscleDisplayEvidence)
+  const shouldShowAccordion = hasVisibleReasons || hasBodyLoad || hasMuscleDisplayEvidence;
 
   // Accordion Renderers
   const renderReasonsAccordion = () => {
@@ -127,9 +129,19 @@ export function RecommendedWorkoutCard({
                     <BodyLoadMap bodyLoad={recommendation.bodyLoad} idPrefix={accordionContentId} />
                   )}
 
-                  {/* ② 분석 기반 추천 사유: 운동 추천일 때만 표시 (!isRest) */}
+                  {/* ② 근육별 기록 근거 (표시 전용) */}
+                  {hasMuscleDisplayEvidence && (
+                    <div className={hasBodyLoad ? 'pt-3 border-t border-slate-800/60' : ''}>
+                      <MuscleDisplayEvidenceList
+                        muscleDisplayEvidence={recommendation.muscleDisplayEvidence}
+                        idPrefix={`${accordionContentId}-muscle`}
+                      />
+                    </div>
+                  )}
+
+                  {/* ③ 분석 기반 추천 사유: 운동 추천일 때만 표시 (!isRest) */}
                   {hasVisibleReasons && (
-                    <div className={`space-y-2 ${hasBodyLoad ? 'pt-3 border-t border-slate-800/60' : ''}`}>
+                    <div className={`space-y-2 ${hasBodyLoad || hasMuscleDisplayEvidence ? 'pt-3 border-t border-slate-800/60' : ''}`}>
                       <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
                         분석 기반 추천 사유
                       </span>
