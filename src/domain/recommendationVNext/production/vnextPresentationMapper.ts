@@ -25,6 +25,7 @@ import { FinalTodayDecision } from '../types/finalTodayDecision.types';
 import { CandidateDecisionEvaluationSet, CandidateDecisionEvidence } from '../types/candidateDecision.types';
 import { RestDecisionEvidence } from '../types/restDecision.types';
 import { NextProjectedSession } from '../types/projectedSession.types';
+import { MuscleDisplayEvidenceResult } from '../types/muscleDisplayEvidence.types';
 import {
   RecommendationResult,
   MainLift,
@@ -280,6 +281,7 @@ export interface MapVNextOptions {
   readonly calendarDate?: string;
   readonly nextProjectedSession?: NextProjectedSession;
   readonly bodyLoad?: BodyLoadPresentation;
+  readonly muscleDisplayEvidence?: MuscleDisplayEvidenceResult;
 }
 
 /**
@@ -461,6 +463,7 @@ export function mapVNextToPresentationModel(
     vnextDecision: decision,
     nextProjectedSession: projectedSession,
     bodyLoad: options?.bodyLoad,
+    muscleDisplayEvidence: options?.muscleDisplayEvidence,
   });
 }
 

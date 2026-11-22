@@ -12,6 +12,7 @@
  */
 
 import { FinalTodayDecision } from './finalTodayDecision.types';
+import { MuscleDisplayEvidenceResult } from './muscleDisplayEvidence.types';
 import { NextProjectedSession } from './projectedSession.types';
 import { StressDimension } from './stressModel.types';
 
@@ -83,4 +84,5 @@ export interface RecommendationResult {
   readonly vnextDecision?: FinalTodayDecision;
   readonly nextProjectedSession?: NextProjectedSession;
   readonly bodyLoad?: BodyLoadPresentation;
+  readonly muscleDisplayEvidence?: MuscleDisplayEvidenceResult;
 }

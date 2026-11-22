@@ -33,6 +33,11 @@ import { mapVNextToPresentationModel } from './vnextPresentationMapper';
 import { mapBodyLoadFromReplayResult } from './bodyLoadPresentationMapper';
 import { FinalTodayDecision } from '../types/finalTodayDecision.types';
 import { NextProjectedSession } from '../types/projectedSession.types';
+import { MuscleDisplayEvidenceResult } from '../types/muscleDisplayEvidence.types';
+import {
+  deriveMuscleDisplayEvidence,
+  extractMuscleDisplaySourceExercisesFromLogs,
+} from '../musculoskeletal/muscleDisplayEvidence';
 import { getNextProjectedSession } from './projectedSessionService';
 
 export interface ProductionRecommendationOptions {
@@ -40,6 +45,8 @@ export interface ProductionRecommendationOptions {
   readonly calendarDate?: string;
   readonly timezone?: string;
   readonly goalSettings?: any;
+  /** Optional override strictly for testing display-only muscle evidence derivation & fail-safe handling */
+  readonly muscleDisplayEvidenceDeriver?: typeof deriveMuscleDisplayEvidence;
 }
 
 export interface VNextProductionResult {
@@ -102,6 +109,23 @@ export function evaluateVNextProduction(
   // Map body load presentation from evaluated replay result
   const bodyLoad = mapBodyLoadFromReplayResult(replayResult);
 
+  // Derive display-only per-muscle evidence once for today's final presentation.
+  // Reuses the exact evaluated activeLogs and evaluation instant/timezone.
+  // Never feeds into readiness, need, candidate ranking, or rest decisions.
+  // Fail-safe: any unexpected error omits only muscleDisplayEvidence while preserving the recommendation.
+  let muscleDisplayEvidence: MuscleDisplayEvidenceResult | undefined;
+  try {
+    const deriveMuscleDisplay =
+      options?.muscleDisplayEvidenceDeriver ?? deriveMuscleDisplayEvidence;
+    const sourceExercises = extractMuscleDisplaySourceExercisesFromLogs(activeLogs);
+    muscleDisplayEvidence = deriveMuscleDisplay(sourceExercises, {
+      evaluationInstant: point.evaluationInstant,
+      evaluationTimezone: point.evaluationTimezone,
+    });
+  } catch {
+    muscleDisplayEvidence = undefined;
+  }
+
   // Map to UI presentation contract
   const presentation = mapVNextToPresentationModel(
     replayResult.todayDecision,
@@ -111,6 +135,7 @@ export function evaluateVNextProduction(
       calendarDate,
       nextProjectedSession: projectedSession,
       bodyLoad,
+      muscleDisplayEvidence,
     }
   );
 
