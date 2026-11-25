@@ -157,6 +157,26 @@ export const snapshotService = {
         }
       }
     }
+
+    // Compare the complete JSON payload, including nested sets and routine targets.
+    // Object key order is not meaningful; array order and every stored value are.
+    // JSON serialization also mirrors storage's omission of undefined properties.
+    const serialize = (value: unknown): string => JSON.stringify(value, (_key, nested) =>
+      nested && typeof nested === 'object' && !Array.isArray(nested)
+        ? Object.fromEntries(Object.entries(nested).sort(([a], [b]) => a.localeCompare(b)))
+        : nested
+    );
+    const collections = [
+      ['workoutLogs', actualLogs, expected.logs],
+      ['routines', actualRoutines, expected.routines],
+      ['exercises', actualExercises, expected.exercises],
+      ['weightLogs', actualWeightLogs, expected.weightLogs],
+    ] as const;
+    for (const [name, actual, wanted] of collections) {
+      if (serialize(actual) !== serialize(wanted)) {
+        throw new Error(`Verification failed: ${name} content mismatch`);
+      }
+    }
   },
 
   /**
